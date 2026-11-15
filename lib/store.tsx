@@ -60,7 +60,7 @@ interface AppContextType {
   // Auth actions
   loginWithPhone: (phone: string, password: string) => boolean;
   loginWithPasscode: (role: CareRole, passcode: string) => boolean;
-  signInWithGoogle: (role: CareRole, customName?: string, customEmail?: string) => Promise<void>;
+  signInWithGoogle: (role: CareRole) => Promise<void>;
   registerUser: (data: RegisterData) => { success: boolean; message: string; requiresOtp?: boolean };
   verifyOtpAndCompleteRegister: (phone: string, otp: string) => boolean;
   logout: () => void;
@@ -92,8 +92,8 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [currentRole, setCurrentRole] = useState<CareRole | null>('ELDER');
-  const [currentUser, setCurrentUser] = useState<CareRoleAccess | null>(INITIAL_ROLES[0]);
+  const [currentRole, setCurrentRole] = useState<CareRole | null>(null);
+  const [currentUser, setCurrentUser] = useState<CareRoleAccess | null>(null);
   const [currentPatientId, setCurrentPatientId] = useState<string>(INITIAL_PATIENT.id);
   const [patient, setPatient] = useState<PatientProfile>(INITIAL_PATIENT);
   const [roles, setRoles] = useState<CareRoleAccess[]>(INITIAL_ROLES);
@@ -108,16 +108,88 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [pendingRegistrations, setPendingRegistrations] = useState<{ [phone: string]: RegisterData & { otp: string } }>({});
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
 
-  // Restore session from cookie on mount
+  // Restore session from cookie on mount & fetch live Supabase database records
   useEffect(() => {
+    // 1. Session restoration from Cookie
     const session = getAuthCookie();
     if (session) {
-      const matched = roles.find(r => r.phone === session.phone || r.id === session.user_id);
-      if (matched) {
-        setCurrentRole(matched.role);
-        setCurrentUser(matched);
-        setCurrentPatientId(matched.patient_id);
-      }
+      setCurrentRole(session.role);
+      setCurrentPatientId(session.patient_id);
+      setCurrentUser({
+        id: session.user_id,
+        patient_id: session.patient_id,
+        role: session.role,
+        name: session.name,
+        email: session.email || '',
+        phone: session.phone || '',
+        password_hash: '',
+        passcode_hash: '',
+        shift_expires_at: null,
+        is_verified: true,
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    // 2. Fetch live data from Supabase if configured
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
+      const fetchDbData = async () => {
+        try {
+          const { data: dbPatients } = await client.from('patient_profiles').select('*').limit(1);
+          if (dbPatients && dbPatients.length > 0) {
+            setPatient(dbPatients[0]);
+            setCurrentPatientId(dbPatients[0].id);
+          }
+
+          const { data: dbRoles } = await client.from('care_role_access').select('*');
+          if (dbRoles && dbRoles.length > 0) {
+            setRoles(dbRoles);
+            if (session) {
+              const matched = dbRoles.find(r => r.id === session.user_id || r.email === session.email || r.phone === session.phone);
+              if (matched) setCurrentUser(matched);
+            }
+          }
+
+          const { data: dbMeds } = await client.from('medications').select('*');
+          if (dbMeds && dbMeds.length > 0) {
+            setMedications(dbMeds);
+          }
+
+          const { data: dbDoses } = await client.from('dose_logs').select('*').order('scheduled_at', { ascending: false });
+          if (dbDoses && dbDoses.length > 0) {
+            setDoseLogs(dbDoses);
+          }
+
+          const { data: dbAppts } = await client.from('appointments').select('*').order('date_time', { ascending: true });
+          if (dbAppts && dbAppts.length > 0) {
+            setAppointments(dbAppts);
+          }
+
+          const { data: dbBills } = await client.from('medical_bills').select('*').order('created_at', { ascending: false });
+          if (dbBills && dbBills.length > 0) {
+            setBills(dbBills);
+          }
+
+          const { data: dbAudits } = await client.from('central_audit_logs').select('*').order('created_at', { ascending: false });
+          if (dbAudits && dbAudits.length > 0) {
+            setAuditLogs(dbAudits);
+          }
+
+          const { data: dbLinking } = await client.from('care_linking_requests').select('*').order('requested_at', { ascending: false });
+          if (dbLinking && dbLinking.length > 0) {
+            setLinkingRequests(dbLinking);
+          }
+
+          const { data: dbAbha } = await client.from('abha_health_records').select('*').order('record_date', { ascending: false });
+          if (dbAbha && dbAbha.length > 0) {
+            setAbhaRecords(dbAbha);
+          }
+        } catch (e) {
+          console.error('Error fetching Supabase live data:', e);
+        }
+      };
+
+      fetchDbData();
     }
   }, []);
 
@@ -162,8 +234,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setAuditLogs(prev => [newEntry, ...prev]);
 
-    if (isSupabaseConfigured && supabase) {
-      supabase.from('central_audit_logs').insert([{
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
+      client.from('central_audit_logs').insert([{
         patient_id: currentPatientId,
         actor_name: actorName,
         actor_role: actorRole,
@@ -175,14 +248,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Real Google OAuth Authentication & Name Fetcher
-  const signInWithGoogle = async (role: CareRole, customName?: string, customEmail?: string) => {
+  // Official Google OAuth Trigger & Direct Session Handshake
+  const signInWithGoogle = async (role: CareRole) => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
 
     // 1. If Supabase is configured with Google Provider, trigger official OAuth redirect
-    if (isSupabaseConfigured && supabase) {
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
       speak('Redirecting to Google Sign-In...');
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { error } = await client.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${origin}/auth/callback?role=${role}`,
@@ -194,21 +268,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) {
         console.error('Supabase Google OAuth error:', error);
-      } else {
-        return;
+        throw error;
       }
+      return;
     }
 
-    // 2. Local fallback if Supabase keys are pending: extract name and save authenticated session
-    const resolvedName = customName || (role === 'DOCTOR' ? 'Dr. Priya Nair' : role === 'CARETAKER' ? 'Ramesh Kumar' : role === 'CHILD' ? 'Karthik Sundaram' : 'Sundaram Iyer');
-    const resolvedEmail = customEmail || `${resolvedName.toLowerCase().replace(/[^a-z]/g, '')}@gmail.com`;
+    // 2. Direct demo fallback without Supabase keys (instant login without manual prompt):
+    const fallbackName = role === 'DOCTOR' ? 'Dr. Priya Nair' : role === 'CARETAKER' ? 'Ramesh Kumar' : role === 'CHILD' ? 'Olena Sundaram' : patient.name;
+    const fallbackEmail = `${fallbackName.toLowerCase().replace(/[^a-z]/g, '')}@gmail.com`;
 
     const targetUser: CareRoleAccess = {
       id: `google-user-${Date.now()}`,
       patient_id: patient.id,
       role,
-      name: resolvedName,
-      email: resolvedEmail,
+      name: fallbackName,
+      email: fallbackEmail,
       phone: role === 'ELDER' ? patient.phone : '',
       password_hash: '',
       passcode_hash: role === 'ELDER' ? '1234' : '654321',
@@ -225,17 +299,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       user_id: targetUser.id,
       patient_id: patient.id,
       role,
-      name: resolvedName,
+      name: fallbackName,
       phone: targetUser.phone,
-      email: resolvedEmail,
+      email: fallbackEmail,
     });
 
-    speak(`Signed in with Google. Welcome, ${resolvedName}!`);
+    speak(`Signed in with Google as ${role}. Welcome, ${fallbackName}!`);
     appendAuditLog(
-      resolvedName,
+      fallbackName,
       role,
       'GOOGLE_OAUTH_LOGIN',
-      `User ${resolvedName} authenticated via Google OAuth with email ${resolvedEmail}.`
+      `User ${fallbackName} authenticated via Google OAuth (${fallbackEmail}).`
     );
   };
 
@@ -493,7 +567,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     clearAuthCookie();
     setCurrentRole(null);
     setCurrentUser(null);
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
+      client.auth.signOut().then();
+    }
     speak('Logged out.');
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   };
 
   // Mark dose as taken

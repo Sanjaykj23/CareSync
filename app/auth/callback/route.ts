@@ -21,13 +21,29 @@ export async function GET(request: NextRequest) {
       const googleAvatar = googleUser.user_metadata?.avatar_url || googleUser.user_metadata?.picture || null;
       const googleId = googleUser.id;
 
-      // Upsert into Supabase care_role_access
-      const defaultPatientId = 'a1111111-1111-1111-1111-111111111111'; // Sundaram Iyer
+      // Determine target patient profile or create one
+      let patientId = 'a1111111-1111-1111-1111-111111111111';
+      const { data: existingPatients } = await supabase.from('patient_profiles').select('id').limit(1);
+      if (existingPatients && existingPatients.length > 0) {
+        patientId = existingPatients[0].id;
+      } else {
+        const { data: newPatient } = await supabase
+          .from('patient_profiles')
+          .insert([{
+            name: role === 'ELDER' ? googleName : 'Elder Patient',
+            phone: '9840123456',
+            age: 74,
+            preferred_language: 'en',
+          }])
+          .select('id')
+          .single();
+        if (newPatient?.id) patientId = newPatient.id;
+      }
 
       await supabase
         .from('care_role_access')
         .upsert({
-          patient_id: defaultPatientId,
+          patient_id: patientId,
           role: role as any,
           name: googleName,
           email: googleEmail,
@@ -47,7 +63,7 @@ export async function GET(request: NextRequest) {
       // Set session cookie in response
       const sessionData = {
         user_id: googleId,
-        patient_id: defaultPatientId,
+        patient_id: patientId,
         role,
         name: googleName,
         phone: '',

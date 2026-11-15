@@ -27,5 +27,5 @@ export function getAuthCookie(): UserSession | null {
 
 export function clearAuthCookie(): void {
   if (typeof document === 'undefined') return;
-  document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+  document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; max-age=0; SameSite=Lax`;
 }
