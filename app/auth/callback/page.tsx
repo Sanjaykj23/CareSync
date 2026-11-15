@@ -162,9 +162,13 @@ function AuthCallbackContent() {
         setStatusText('Verification complete! Launching dashboard...');
         setTimeout(() => {
           if (isMounted) {
-            router.replace(targetRoute);
+            if (typeof window !== 'undefined') {
+              window.location.href = targetRoute;
+            } else {
+              router.replace(targetRoute);
+            }
           }
-        }, 500);
+        }, 300);
 
       } catch (err: any) {
         console.error('Authentication callback error:', err);

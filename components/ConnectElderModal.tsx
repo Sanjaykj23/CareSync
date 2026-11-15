@@ -75,7 +75,9 @@ export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModal
   const handleSendRequest = async () => {
     if (!searchedPatient) return;
     setIsSending(true);
-    const msg = customMessage || `${currentUser?.name} (${currentUser?.role}) is requesting authorization to join your Care Circle.`;
+    const senderName = currentUser?.name || 'A verified member';
+    const senderRole = currentUser?.role || 'CHILD';
+    const msg = customMessage || `${senderName} (${senderRole}) is requesting authorization to join your Care Circle.`;
     const res = await sendLinkingRequest(searchedPatient.phone, msg);
     setIsSending(false);
 

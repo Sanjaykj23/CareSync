@@ -5,7 +5,8 @@ export async function POST(request: NextRequest) {
     const sessionData = await request.json();
     const response = NextResponse.json({ success: true, session: sessionData });
 
-    const json = encodeURIComponent(JSON.stringify(sessionData));
+    // Next.js response.cookies.set encodes automatically, so pass raw stringified JSON
+    const json = JSON.stringify(sessionData);
     response.cookies.set('caresync_session', json, {
       path: '/',
       maxAge: 7 * 24 * 60 * 60, // 7 days

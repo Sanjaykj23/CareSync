@@ -120,8 +120,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Restore session from cookie on mount & fetch live Supabase database records
   useEffect(() => {
-    // 1. Session restoration from Cookie
-    const session = getAuthCookie();
+    // 1. Session restoration from Cookie / localStorage
+    let session = getAuthCookie();
     if (session) {
       setCurrentRole(session.role);
       setCurrentPatientId(session.patient_id);
@@ -140,8 +140,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    // 2. Fetch live data from Supabase if configured
+    // 2. Fallback direct check against Supabase Auth Session
     const client = supabase;
+    if (!session && isSupabaseConfigured && client) {
+      client.auth.getSession().then(({ data }) => {
+        if (data.session?.user) {
+          const u = data.session.user;
+          const fallbackRole = (typeof window !== 'undefined' ? localStorage.getItem('caresync_oauth_role') : null) as CareRole || 'CHILD';
+          const restoredName = u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || 'CareSync User';
+          
+          const restoredSession = {
+            user_id: u.id,
+            patient_id: patient.id,
+            role: fallbackRole,
+            name: restoredName,
+            phone: '',
+            email: u.email || '',
+            avatar_url: u.user_metadata?.avatar_url || u.user_metadata?.picture || null,
+          };
+          
+          setAuthCookie(restoredSession);
+          setCurrentRole(fallbackRole);
+          setCurrentPatientId(patient.id);
+          setCurrentUser({
+            id: u.id,
+            patient_id: patient.id,
+            role: fallbackRole,
+            name: restoredName,
+            email: u.email || '',
+            phone: '',
+            password_hash: '',
+            passcode_hash: '',
+            shift_expires_at: null,
+            is_verified: true,
+            created_at: new Date().toISOString(),
+          });
+        }
+      });
+    }
+
+    // 3. Fetch live data from Supabase if configured
     if (isSupabaseConfigured && client) {
       const fetchDbData = async () => {
         try {
@@ -741,7 +779,54 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // 5. Send Care Circle Linking Request (Doctor/Child/Caretaker -> Elder) with Database Elder Search
   const sendLinkingRequest = async (elderInput: string, message?: string): Promise<{ success: boolean; message: string }> => {
-    if (!currentUser) return { success: false, message: 'Please log in to send a request.' };
+    // Dynamically resolve sender from state, cookie, localStorage, or active Supabase session
+    let sender = currentUser;
+    if (!sender) {
+      const session = getAuthCookie();
+      if (session) {
+        sender = {
+          id: session.user_id,
+          patient_id: session.patient_id,
+          role: session.role,
+          name: session.name,
+          email: session.email || '',
+          phone: session.phone || '',
+          password_hash: '',
+          passcode_hash: '',
+          shift_expires_at: null,
+          is_verified: true,
+          created_at: new Date().toISOString(),
+        };
+        setCurrentUser(sender);
+        setCurrentRole(session.role);
+      }
+    }
+    if (!sender && isSupabaseConfigured && supabase) {
+      try {
+        const { data: supaAuth } = await supabase.auth.getSession();
+        if (supaAuth.session?.user) {
+          const u = supaAuth.session.user;
+          const assignedRole = currentRole || 'CHILD';
+          sender = {
+            id: u.id,
+            patient_id: patient.id,
+            role: assignedRole,
+            name: u.user_metadata?.full_name || u.user_metadata?.name || u.email?.split('@')[0] || 'CareSync User',
+            email: u.email || '',
+            phone: '',
+            password_hash: '',
+            passcode_hash: '',
+            shift_expires_at: null,
+            is_verified: true,
+            created_at: new Date().toISOString(),
+          };
+          setCurrentUser(sender);
+          setCurrentRole(assignedRole);
+        }
+      } catch {}
+    }
+
+    if (!sender) return { success: false, message: 'Please log in to send a request.' };
 
     const cleanInput = elderInput.trim().replace(/\D/g, '');
     const client = supabase;
@@ -782,11 +867,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const newReq: LinkingRequest = {
       id: `req-${Date.now()}`,
       patient_id: matchedElder.id,
-      requester_id: currentUser.id,
-      requester_name: currentUser.name,
-      requester_role: currentUser.role,
-      requester_phone: currentUser.phone,
-      message: message || `Requesting permission to join Care Circle as ${currentUser.role}.`,
+      requester_id: sender.id,
+      requester_name: sender.name,
+      requester_role: sender.role,
+      requester_phone: sender.phone,
+      message: message || `Requesting permission to join Care Circle as ${sender.role}.`,
       status: 'PENDING',
       requested_at: new Date().toISOString(),
       responded_at: null,
@@ -798,11 +883,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         await client.from('care_linking_requests').insert([{
           patient_id: matchedElder.id,
-          requester_id: currentUser.id,
-          requester_name: currentUser.name,
-          requester_role: currentUser.role,
-          requester_phone: currentUser.phone,
-          requester_email: currentUser.email,
+          requester_id: sender.id,
+          requester_name: sender.name,
+          requester_role: sender.role,
+          requester_phone: sender.phone,
+          requester_email: sender.email,
           message: newReq.message,
           status: 'PENDING',
         }]);
@@ -813,10 +898,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     speak(`Care Circle request sent to ${matchedElder.name}. Waiting for approval.`);
     appendAuditLog(
-      currentUser.name,
-      currentUser.role,
+      sender.name,
+      sender.role,
       'LINKING_REQUEST_SENT',
-      `${currentUser.name} (${currentUser.role}) requested to link with Elder ${matchedElder.name} (+91 ${matchedElder.phone}).`
+      `${sender.name} (${sender.role}) requested to link with Elder ${matchedElder.name} (+91 ${matchedElder.phone}).`
     );
 
     return { 
