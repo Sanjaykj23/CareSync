@@ -62,7 +62,15 @@ interface AppContextType {
   loginWithPasscode: (role: CareRole, passcode: string) => boolean;
   signInWithGoogle: (role: CareRole) => Promise<void>;
   registerUser: (data: RegisterData) => { success: boolean; message: string; requiresOtp?: boolean };
-  verifyOtpAndCompleteRegister: (phone: string, otp: string) => boolean;
+  verifyOtpAndCompleteRegister: (phone: string, otp: string) => Promise<boolean>;
+  registerCareRoleUser: (data: {
+    name: string;
+    email: string;
+    phone: string;
+    role: CareRole;
+    passcode: string;
+    targetElderPhone?: string;
+  }) => Promise<{ success: boolean; message: string }>;
   logout: () => void;
   switchRoleQuick: (role: CareRole) => void;
   
@@ -386,11 +394,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return false;
   };
 
-  // 3. User Registration with OTP Simulation
+  // 3. User Registration with OTP Simulation & Duplicate Verification
   const registerUser = (data: RegisterData): { success: boolean; message: string; requiresOtp?: boolean } => {
     const cleanPhone = data.phone.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
       return { success: false, message: 'Please enter a valid 10-digit phone number.' };
+    }
+
+    // Check duplicate in active roles list
+    const existing = roles.find(r => r.phone && r.phone.replace(/\D/g, '').endsWith(cleanPhone.slice(-10)));
+    if (existing) {
+      return {
+        success: false,
+        message: `An account with mobile number +91 ${cleanPhone} already exists as ${existing.role} (${existing.name}). Please sign in.`
+      };
     }
 
     // Generate 6-digit OTP (Default 123456 for instant testing)
@@ -400,7 +417,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       [cleanPhone]: { ...data, phone: cleanPhone, otp: simulatedOtp }
     }));
 
-    speak(`OTP sent to phone ending in ${cleanPhone.slice(-4)}. Demo OTP is 123456.`);
+    speak(`OTP sent to phone ending in ${cleanPhone.slice(-4)}. Demo code is 123456.`);
     return {
       success: true,
       message: `OTP sent successfully to +91 ${cleanPhone}. (Use Demo OTP: 123456)`,
@@ -408,8 +425,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
-  // 4. Verify OTP and finalize registration
-  const verifyOtpAndCompleteRegister = (phone: string, otp: string): boolean => {
+  // 4. Verify OTP and finalize Elder registration with direct Supabase persistence
+  const verifyOtpAndCompleteRegister = async (phone: string, otp: string): Promise<boolean> => {
     const cleanPhone = phone.replace(/\D/g, '');
     const pending = pendingRegistrations[cleanPhone];
 
@@ -423,65 +440,298 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
-    let assignedPatientId = INITIAL_PATIENT.id;
+    let assignedPatientId = `patient-${Date.now()}`;
+    const client = supabase;
 
-    // If Elder registers, create a new isolated PatientProfile
-    if (pending.role === 'ELDER') {
-      const newElderId = `patient-${Date.now()}`;
-      assignedPatientId = newElderId;
-      const newPatient: PatientProfile = {
-        id: newElderId,
-        name: pending.name,
-        phone: cleanPhone,
-        age: pending.age || 70,
-        abha_id: pending.abhaId || `91-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
-        abha_address: `${pending.name.toLowerCase().replace(/\s+/g, '')}@abdm`,
-        emergency_threshold: 2,
-        travel_mode_active: false,
-        travel_mode_until: null,
-        preferred_language: 'en',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setPatient(newPatient);
-      setCurrentPatientId(newElderId);
+    // 1. Write to Supabase Database if configured
+    if (isSupabaseConfigured && client) {
+      try {
+        // Insert into patient_profiles table
+        const { data: dbPatient, error: pErr } = await client
+          .from('patient_profiles')
+          .insert([{
+            name: pending.name,
+            phone: cleanPhone,
+            age: pending.age || 70,
+            abha_id: pending.abhaId || `91-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
+            abha_address: `${pending.name.toLowerCase().replace(/\s+/g, '')}@abdm`,
+            emergency_threshold: 2,
+            preferred_language: 'en',
+            travel_mode_active: false,
+          }])
+          .select()
+          .single();
+
+        if (pErr) {
+          console.error('Error inserting patient into Supabase:', pErr);
+        } else if (dbPatient) {
+          assignedPatientId = dbPatient.id;
+          setPatient(dbPatient);
+          setCurrentPatientId(dbPatient.id);
+
+          // Insert 4 initial medication slots mapped to the hardware IoT dispenser
+          const initialMeds = [
+            { patient_id: dbPatient.id, name: 'Amlodipine', dosage: '5 mg · 1 capsule', schedule_time: '13:00:00', meal_instruction: 'after_food', iot_slot_number: 1, remaining_pills: 30 },
+            { patient_id: dbPatient.id, name: 'Metformin', dosage: '500 mg · 1 tablet', schedule_time: '08:00:00', meal_instruction: 'after_food', iot_slot_number: 2, remaining_pills: 30 },
+            { patient_id: dbPatient.id, name: 'Atorvastatin', dosage: '10 mg · 1 tablet', schedule_time: '20:00:00', meal_instruction: 'after_food', iot_slot_number: 3, remaining_pills: 30 },
+            { patient_id: dbPatient.id, name: 'Vitamin D3', dosage: '60,000 IU · 1 sachet', schedule_time: '08:00:00', meal_instruction: 'with_food', iot_slot_number: 4, remaining_pills: 4 },
+          ];
+          const { data: insertedMeds } = await client.from('medications').insert(initialMeds).select();
+          if (insertedMeds) {
+            setMedications(insertedMeds);
+
+            // Insert initial scheduled dose logs
+            const today = new Date().toISOString().split('T')[0];
+            const initialDoses = insertedMeds.map((m: any) => ({
+              patient_id: dbPatient.id,
+              medication_id: m.id,
+              scheduled_at: `${today}T${m.schedule_time}Z`,
+              status: 'SCHEDULED',
+            }));
+            const { data: insertedDoses } = await client.from('dose_logs').insert(initialDoses).select();
+            if (insertedDoses) setDoseLogs(insertedDoses);
+          }
+
+          // Insert into care_role_access
+          const { data: dbUser } = await client
+            .from('care_role_access')
+            .insert([{
+              patient_id: dbPatient.id,
+              role: 'ELDER',
+              name: pending.name,
+              phone: cleanPhone,
+              email: `${cleanPhone}@caresync.in`,
+              auth_provider: 'phone_otp',
+              passcode_hash: '1234',
+              is_verified: true,
+            }])
+            .select()
+            .single();
+
+          if (dbUser) {
+            setRoles(prev => [...prev, dbUser]);
+            setCurrentRole('ELDER');
+            setCurrentUser(dbUser);
+          }
+        }
+      } catch (dbErr) {
+        console.error('Supabase registration error:', dbErr);
+      }
     }
+
+    // 2. Local State & Session synchronization
+    const newPatient: PatientProfile = {
+      id: assignedPatientId,
+      name: pending.name,
+      phone: cleanPhone,
+      age: pending.age || 70,
+      abha_id: pending.abhaId || `91-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
+      abha_address: `${pending.name.toLowerCase().replace(/\s+/g, '')}@abdm`,
+      emergency_threshold: 2,
+      travel_mode_active: false,
+      travel_mode_until: null,
+      preferred_language: 'en',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
 
     const newUser: CareRoleAccess = {
       id: `user-${Date.now()}`,
       patient_id: assignedPatientId,
-      role: pending.role,
+      role: 'ELDER',
       name: pending.name,
       email: `${pending.name.toLowerCase().replace(/\s+/g, '.')}@example.in`,
       phone: cleanPhone,
       password_hash: pending.password,
-      passcode_hash: pending.role === 'ELDER' ? '1234' : '654321',
-      shift_expires_at: pending.role === 'CARETAKER' ? new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString() : null,
+      passcode_hash: '1234',
+      shift_expires_at: null,
       is_verified: true,
       created_at: new Date().toISOString(),
     };
 
-    setRoles(prev => [...prev, newUser]);
-    setCurrentRole(newUser.role);
-    setCurrentUser(newUser);
+    setPatient(newPatient);
     setCurrentPatientId(assignedPatientId);
+    setRoles(prev => [...prev, newUser]);
+    setCurrentRole('ELDER');
+    setCurrentUser(newUser);
 
     setAuthCookie({
       user_id: newUser.id,
       patient_id: assignedPatientId,
-      role: newUser.role,
+      role: 'ELDER',
       name: newUser.name,
       phone: newUser.phone,
     });
 
-    speak(`Registration successful! Welcome to CareSync, ${newUser.name}.`);
+    speak(`Registration verified! Welcome to CareSync, ${newUser.name}.`);
     appendAuditLog(
       newUser.name,
-      newUser.role,
+      'ELDER',
       'USER_REGISTERED',
-      `New user ${newUser.name} created account with role ${newUser.role} via OTP verification.`
+      `Elder ${newUser.name} created account with phone +91 ${cleanPhone}. Database profile initialized.`
     );
     return true;
+  };
+
+  // 5. Register Care Role Users (Child, Caretaker, Doctor) with Supabase persistence & duplicate check
+  const registerCareRoleUser = async (data: {
+    name: string;
+    email: string;
+    phone: string;
+    role: CareRole;
+    passcode: string;
+    targetElderPhone?: string;
+  }): Promise<{ success: boolean; message: string }> => {
+    const cleanPhone = data.phone.replace(/\D/g, '');
+    const client = supabase;
+
+    // Check duplicate in memory
+    const existingMemory = roles.find(r => 
+      (data.email && r.email?.toLowerCase() === data.email.toLowerCase()) || 
+      (cleanPhone && r.phone?.replace(/\D/g, '').endsWith(cleanPhone.slice(-10)))
+    );
+
+    if (existingMemory) {
+      return { 
+        success: false, 
+        message: `An account with this email (${data.email}) or phone (+91 ${cleanPhone}) already exists as ${existingMemory.role}. Please sign in.` 
+      };
+    }
+
+    let targetPatientId = patient?.id || 'a1111111-1111-1111-1111-111111111111';
+
+    if (isSupabaseConfigured && client) {
+      try {
+        // 1. Check duplicate in database
+        const { data: dbCheck } = await client
+          .from('care_role_access')
+          .select('id, name, role')
+          .or(`email.eq.${data.email},phone.eq.${cleanPhone}`);
+
+        if (dbCheck && dbCheck.length > 0) {
+          return { 
+            success: false, 
+            message: `Credentials already exist in database for ${dbCheck[0].name} (${dbCheck[0].role}). Please sign in.` 
+          };
+        }
+
+        // 2. Find target elder by phone if provided
+        if (data.targetElderPhone) {
+          const cleanElderPhone = data.targetElderPhone.replace(/\D/g, '');
+          const { data: elderData } = await client
+            .from('patient_profiles')
+            .select('id')
+            .eq('phone', cleanElderPhone)
+            .limit(1);
+
+          if (elderData && elderData.length > 0) {
+            targetPatientId = elderData[0].id;
+          }
+        }
+
+        // 3. Insert into Supabase care_role_access
+        const { data: insertedUser, error: uErr } = await client
+          .from('care_role_access')
+          .insert([{
+            patient_id: targetPatientId,
+            role: data.role,
+            name: data.name,
+            email: data.email,
+            phone: cleanPhone,
+            auth_provider: 'passcode',
+            passcode_hash: data.passcode,
+            is_verified: true,
+            shift_expires_at: data.role === 'CARETAKER' ? new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString() : null,
+          }])
+          .select()
+          .single();
+
+        if (uErr) {
+          console.error('Error creating user in Supabase:', uErr);
+          return { success: false, message: uErr.message };
+        }
+
+        if (insertedUser) {
+          // 4. Send Linking Request to the Elder's circle
+          await client.from('care_linking_requests').insert([{
+            patient_id: targetPatientId,
+            requester_id: insertedUser.id,
+            requester_name: insertedUser.name,
+            requester_role: insertedUser.role,
+            requester_phone: insertedUser.phone,
+            requester_email: insertedUser.email,
+            message: `New ${insertedUser.role} registration requesting access to Care Circle.`,
+            status: 'PENDING',
+          }]);
+
+          setRoles(prev => [...prev, insertedUser]);
+          setCurrentRole(data.role);
+          setCurrentUser(insertedUser);
+          setCurrentPatientId(targetPatientId);
+
+          setAuthCookie({
+            user_id: insertedUser.id,
+            patient_id: targetPatientId,
+            role: data.role,
+            name: insertedUser.name,
+            phone: insertedUser.phone || '',
+            email: insertedUser.email || '',
+          });
+
+          speak(`Account created! Welcome to CareSync, ${data.name}.`);
+          appendAuditLog(
+            insertedUser.name,
+            data.role,
+            'USER_REGISTERED',
+            `New ${data.role} account created for ${data.name} and persisted to database.`
+          );
+
+          return { success: true, message: 'Account registered successfully!' };
+        }
+      } catch (err: any) {
+        console.error('Registration exception:', err);
+        return { success: false, message: err.message || 'Registration failed.' };
+      }
+    }
+
+    // Fallback if offline / demo mode
+    const fallbackUser: CareRoleAccess = {
+      id: `user-${Date.now()}`,
+      patient_id: targetPatientId,
+      role: data.role,
+      name: data.name,
+      email: data.email,
+      phone: cleanPhone,
+      password_hash: data.passcode,
+      passcode_hash: data.passcode,
+      shift_expires_at: data.role === 'CARETAKER' ? new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString() : null,
+      is_verified: true,
+      created_at: new Date().toISOString(),
+    };
+
+    setRoles(prev => [...prev, fallbackUser]);
+    setCurrentRole(data.role);
+    setCurrentUser(fallbackUser);
+    setCurrentPatientId(targetPatientId);
+
+    setAuthCookie({
+      user_id: fallbackUser.id,
+      patient_id: targetPatientId,
+      role: data.role,
+      name: fallbackUser.name,
+      phone: fallbackUser.phone || '',
+      email: fallbackUser.email || '',
+    });
+
+    speak(`Account created! Welcome to CareSync, ${data.name}.`);
+    appendAuditLog(
+      fallbackUser.name,
+      data.role,
+      'USER_REGISTERED',
+      `New ${data.role} registered: ${data.name}.`
+    );
+
+    return { success: true, message: 'Account registered successfully!' };
   };
 
   // 5. Send Care Circle Linking Request (Doctor/Child/Caretaker -> Elder)
@@ -854,6 +1104,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         signInWithGoogle,
         registerUser,
         verifyOtpAndCompleteRegister,
+        registerCareRoleUser,
         logout,
         switchRoleQuick,
         speak,

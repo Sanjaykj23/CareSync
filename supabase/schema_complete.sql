@@ -71,6 +71,8 @@ CREATE TABLE care_role_access (
     is_verified BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_care_role_email ON care_role_access(email) WHERE email IS NOT NULL AND email != '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_care_role_phone ON care_role_access(phone) WHERE phone IS NOT NULL AND phone != '';
 
 -- 3. Medications (4 Compartments Mapped to IoT Box)
 CREATE TABLE medications (
