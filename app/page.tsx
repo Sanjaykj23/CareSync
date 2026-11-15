@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { useApp } from '@/lib/store';
 import { 
   ShieldCheck, 
   Cpu, 
@@ -17,10 +18,14 @@ import {
   FileCheck2,
   BellRing,
   Stethoscope,
-  ChevronRight
+  ChevronRight,
+  UserCheck
 } from 'lucide-react';
 
 export default function HomePage() {
+  const { currentRole, currentUser } = useApp();
+  const dashboardHref = currentRole ? `/dashboard/${currentRole.toLowerCase()}` : '/login';
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 selection:bg-blue-600 selection:text-white flex flex-col font-sans">
       {/* 1. Global Navigation Bar */}
@@ -48,25 +53,42 @@ export default function HomePage() {
           <nav className="hidden md:flex items-center gap-6 text-xs font-bold text-slate-600">
             <a href="#innovations" className="hover:text-slate-900 transition-all">Innovations</a>
             <a href="#dispenser" className="hover:text-slate-900 transition-all">IoT Dispenser</a>
-            <a href="#abdm" className="hover:text-slate-900 transition-all">ABDM Health Locker</a>
-            <a href="#security" className="hover:text-slate-900 transition-all">Immutable Audit</a>
+            <Link href="/abdm" className="hover:text-slate-900 transition-all">ABDM Health Locker</Link>
+            <Link href="/dashboard/audit" className="hover:text-slate-900 transition-all">Immutable Audit</Link>
           </nav>
 
           {/* Authentication Actions */}
           <div className="flex items-center gap-2.5">
-            <Link
-              href="/login"
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/register"
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all flex items-center gap-1.5"
-            >
-              <span>Get Started</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
+            {currentRole && currentUser ? (
+              <div className="flex items-center gap-2 sm:gap-3">
+                <span className="hidden sm:inline text-xs text-slate-500 font-medium">
+                  Active: <strong className="text-slate-900 font-bold">{currentUser.name}</strong> ({currentRole})
+                </span>
+                <Link
+                  href={dashboardHref}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-all flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Open Dashboard</span>
+                </Link>
+              </div>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition-all flex items-center gap-1.5"
+                >
+                  <span>Get Started</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -93,21 +115,33 @@ export default function HomePage() {
 
           {/* CTA Buttons */}
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3.5">
-            <Link
-              href="/login"
-              className="px-7 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 active:scale-98"
-            >
-              <span>Access Role Portals</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            {currentRole ? (
+              <Link
+                href={dashboardHref}
+                className="px-8 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 active:scale-98"
+              >
+                <span>Resume {currentRole} Dashboard</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="px-7 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm shadow-md transition-all flex items-center gap-2 active:scale-98"
+                >
+                  <span>Access Role Portals</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
 
-            <Link
-              href="/register"
-              className="px-7 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-sm border border-slate-200 shadow-sm transition-all flex items-center gap-2"
-            >
-              <Users className="w-4 h-4 text-blue-600" />
-              <span>Create Patient or Care Account</span>
-            </Link>
+                <Link
+                  href="/register"
+                  className="px-7 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-sm border border-slate-200 shadow-sm transition-all flex items-center gap-2"
+                >
+                  <Users className="w-4 h-4 text-blue-600" />
+                  <span>Create Patient or Care Account</span>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Value Props Bar */}

@@ -357,34 +357,22 @@ export default function RegisterPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      6-Digit Passcode
-                    </label>
-                    <input
-                      type="password"
-                      placeholder="654321"
-                      maxLength={6}
-                      value={careRolePasscode}
-                      onChange={e => setCareRolePasscode(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 transition-all font-mono tracking-wider"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Elder&apos;s Phone to Link
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="e.g. 9840123456"
-                      value={targetElderPhone}
-                      onChange={e => setTargetElderPhone(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 transition-all font-mono"
-                    />
-                  </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    6-Digit Security Passcode
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="654321"
+                    maxLength={6}
+                    value={careRolePasscode}
+                    onChange={e => setCareRolePasscode(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 transition-all font-mono tracking-wider"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    You can connect to your elder&apos;s care circle right from your dashboard after sign-in.
+                  </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-500">

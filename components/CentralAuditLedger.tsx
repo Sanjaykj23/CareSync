@@ -16,13 +16,15 @@ import {
 } from 'lucide-react';
 
 export default function CentralAuditLedger() {
-  const { auditLogs } = useApp();
+  const { auditLogs, currentPatientId, patient } = useApp();
   const [selectedRole, setSelectedRole] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Filter logs
-  const filteredLogs = auditLogs.filter(log => {
+  // Filter logs strictly isolated to this Care Circle (patient_id) for multi-tenant privacy
+  const circleLogs = auditLogs.filter(log => !log.patient_id || log.patient_id === currentPatientId);
+
+  const filteredLogs = circleLogs.filter(log => {
     const matchesRole = selectedRole === 'ALL' || log.actor_role === selectedRole;
     const matchesSearch = 
       log.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -53,23 +55,25 @@ export default function CentralAuditLedger() {
       {/* Immutability Banner */}
       <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-soft flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1">
               <Lock className="w-3 h-3" /> Append-Only Trigger Active
             </span>
-            <span className="text-xs text-slate-400">· PostgreSQL trg_immutable_audit_logs</span>
+            <span className="text-xs text-slate-300 font-bold">
+              🔒 Scoped to {patient?.name || 'Active Elder'}&apos;s Circle
+            </span>
           </div>
           <h2 className="text-2xl font-black mt-1">
             Centralized Activity & Audit Ledger
           </h2>
           <p className="text-sm text-slate-400">
-            Immutable, cross-role audit trail logging every medication intake, prescription change, and IoT sensor event.
+            Immutable, cross-role audit trail strictly isolated to {patient?.name}&apos;s Care Circle. Unrelated families and logs are private.
           </p>
         </div>
 
         <div className="bg-slate-800/90 border border-slate-700 rounded-2xl px-4 py-2.5 text-right">
-          <span className="text-[11px] text-slate-400 block font-medium">Logged Entries</span>
-          <span className="font-mono font-bold text-white text-lg">{auditLogs.length} Events</span>
+          <span className="text-[11px] text-slate-400 block font-medium">Circle Events</span>
+          <span className="font-mono font-bold text-white text-lg">{circleLogs.length} Events</span>
         </div>
       </div>
 

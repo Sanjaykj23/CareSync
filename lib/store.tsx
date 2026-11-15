@@ -85,7 +85,7 @@ interface AppContextType {
   simulateMissedDose: (medicationId: string) => Promise<void>;
   
   // Care Circle & Linking
-  sendLinkingRequest: (elderPhone: string, message?: string) => { success: boolean; message: string };
+  sendLinkingRequest: (elderPhone: string, message?: string) => Promise<{ success: boolean; message: string }>;
   respondToLinkingRequest: (requestId: string, status: 'ACCEPTED' | 'REJECTED') => void;
   
   // Care & Travel
@@ -95,6 +95,8 @@ interface AppContextType {
   updatePrescription: (medId: string, updates: Partial<Medication>) => void;
   acknowledgeEmergency: (alertId: string) => void;
   toggleAbhaConsent: (recordId: string) => void;
+  linkAbhaId: (abhaId: string, abhaAddress?: string) => Promise<boolean>;
+  unlinkAbhaId: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -734,13 +736,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return { success: true, message: 'Account registered successfully!' };
   };
 
-  // 5. Send Care Circle Linking Request (Doctor/Child/Caretaker -> Elder)
-  const sendLinkingRequest = (elderPhone: string, message?: string): { success: boolean; message: string } => {
+  // 5. Send Care Circle Linking Request (Doctor/Child/Caretaker -> Elder) with Database Elder Search
+  const sendLinkingRequest = async (elderInput: string, message?: string): Promise<{ success: boolean; message: string }> => {
     if (!currentUser) return { success: false, message: 'Please log in to send a request.' };
 
+    const cleanInput = elderInput.trim().replace(/\D/g, '');
+    const client = supabase;
+    let matchedElder: PatientProfile | null = null;
+
+    // Search in Supabase patient_profiles table
+    if (isSupabaseConfigured && client) {
+      try {
+        const { data: dbPatients } = await client
+          .from('patient_profiles')
+          .select('*')
+          .or(`phone.eq.${cleanInput},phone.ilike.%${cleanInput.slice(-10)}%`);
+
+        if (dbPatients && dbPatients.length > 0) {
+          matchedElder = dbPatients[0];
+        }
+      } catch (e) {
+        console.error('Error searching elder in Supabase:', e);
+      }
+    }
+
+    // Fallback search in memory
+    if (!matchedElder) {
+      if (patient && (patient.phone.replace(/\D/g, '').endsWith(cleanInput.slice(-10)) || patient.name.toLowerCase().includes(elderInput.toLowerCase()))) {
+        matchedElder = patient;
+      }
+    }
+
+    if (!matchedElder) {
+      speak('No registered elder found with this phone number.');
+      return {
+        success: false,
+        message: `No registered elder found matching "${elderInput}". Please verify the phone number or ask the elder to register on CareSync first.`
+      };
+    }
+
+    // Elder found! Send linking request
     const newReq: LinkingRequest = {
       id: `req-${Date.now()}`,
-      patient_id: patient.id,
+      patient_id: matchedElder.id,
       requester_id: currentUser.id,
       requester_name: currentUser.name,
       requester_role: currentUser.role,
@@ -752,18 +790,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     setLinkingRequests(prev => [newReq, ...prev]);
-    speak(`Linking request sent to ${elderPhone}. Waiting for Elder approval.`);
+
+    if (isSupabaseConfigured && client) {
+      try {
+        await client.from('care_linking_requests').insert([{
+          patient_id: matchedElder.id,
+          requester_id: currentUser.id,
+          requester_name: currentUser.name,
+          requester_role: currentUser.role,
+          requester_phone: currentUser.phone,
+          requester_email: currentUser.email,
+          message: newReq.message,
+          status: 'PENDING',
+        }]);
+      } catch (insertErr) {
+        console.error('Error persisting linking request:', insertErr);
+      }
+    }
+
+    speak(`Care Circle request sent to ${matchedElder.name}. Waiting for approval.`);
     appendAuditLog(
       currentUser.name,
       currentUser.role,
       'LINKING_REQUEST_SENT',
-      `${currentUser.name} (${currentUser.role}) sent access request to Elder.`
+      `${currentUser.name} (${currentUser.role}) requested to link with Elder ${matchedElder.name} (+91 ${matchedElder.phone}).`
     );
-    return { success: true, message: 'Linking request successfully submitted to Elder.' };
+
+    return { 
+      success: true, 
+      message: `Care Circle invitation sent to ${matchedElder.name} (+91 ${matchedElder.phone}). They will be notified on their home screen to accept it.` 
+    };
   };
 
-  // 6. Elder Responds to Linking Request (Accept / Reject)
-  const respondToLinkingRequest = (requestId: string, status: 'ACCEPTED' | 'REJECTED') => {
+  // 6. Elder Responds to Linking Request (Accept / Reject) with Supabase persistence
+  const respondToLinkingRequest = async (requestId: string, status: 'ACCEPTED' | 'REJECTED') => {
     setLinkingRequests(prev => prev.map(req => {
       if (req.id === requestId) {
         return {
@@ -774,6 +834,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return req;
     }));
+
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
+      try {
+        await client
+          .from('care_linking_requests')
+          .update({ status, responded_at: new Date().toISOString() })
+          .eq('id', requestId);
+      } catch (err) {
+        console.error('Error updating linking request in Supabase:', err);
+      }
+    }
 
     const targetReq = linkingRequests.find(r => r.id === requestId);
     const actionDesc = status === 'ACCEPTED' 
@@ -1082,6 +1154,72 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const linkAbhaId = async (abhaId: string, abhaAddress?: string): Promise<boolean> => {
+    const cleanId = abhaId.trim();
+    const cleanAddr = abhaAddress?.trim() || `${patient.name.toLowerCase().replace(/\s+/g, '')}@abdm`;
+
+    setPatient(prev => ({
+      ...prev,
+      abha_id: cleanId,
+      abha_address: cleanAddr,
+    }));
+
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
+      try {
+        await client
+          .from('patient_profiles')
+          .update({
+            abha_id: cleanId,
+            abha_address: cleanAddr,
+          })
+          .eq('id', patient.id);
+      } catch (e) {
+        console.error('Error saving ABHA ID to Supabase:', e);
+      }
+    }
+
+    speak(`ABHA Health ID ${cleanId} linked successfully.`);
+    appendAuditLog(
+      patient.name,
+      'ELDER',
+      'ABHA_ID_LINKED',
+      `Elder linked 14-digit ABHA Number (${cleanId}) via NHA Sandbox Gateway.`
+    );
+    return true;
+  };
+
+  const unlinkAbhaId = async (): Promise<void> => {
+    setPatient(prev => ({
+      ...prev,
+      abha_id: '',
+      abha_address: '',
+    }));
+
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
+      try {
+        await client
+          .from('patient_profiles')
+          .update({
+            abha_id: null,
+            abha_address: null,
+          })
+          .eq('id', patient.id);
+      } catch (e) {
+        console.error('Error unlinking ABHA ID from Supabase:', e);
+      }
+    }
+
+    speak('ABHA Health ID unlinked.');
+    appendAuditLog(
+      patient.name,
+      'ELDER',
+      'ABHA_ID_UNLINKED',
+      `Elder unlinked ABHA Health ID.`
+    );
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1121,6 +1259,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updatePrescription,
         acknowledgeEmergency,
         toggleAbhaConsent,
+        linkAbhaId,
+        unlinkAbhaId,
       }}
     >
       {children}

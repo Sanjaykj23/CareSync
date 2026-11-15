@@ -151,4 +151,5 @@ export interface AbhaRecord {
   date: string;
   document_url: string;
   consent_granted: boolean;
+  extracted_clinical_notes?: string;
 }

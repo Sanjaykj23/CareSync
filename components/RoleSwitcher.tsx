@@ -52,7 +52,7 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
       <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
         {/* Brand & Authenticated User Indicator */}
         <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2.5 group">
+          <Link href={currentRole ? `/dashboard/${currentRole.toLowerCase()}` : '/'} className="flex items-center gap-2.5 group">
             <div className="w-9 h-9 rounded-xl bg-slate-900 text-white font-black text-lg flex items-center justify-center shadow-sm group-hover:bg-blue-600 transition-all">
               CS
             </div>

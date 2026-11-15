@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/lib/store';
-import { Search, HeartHandshake, CheckCircle, X, ShieldAlert, User, ArrowRight } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { Search, HeartHandshake, CheckCircle, X, ShieldAlert, User, ArrowRight, Phone } from 'lucide-react';
 
 interface ConnectElderModalProps {
   isOpen: boolean;
@@ -17,10 +18,11 @@ export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModal
   const [searchError, setSearchError] = useState<string | null>(null);
   const [customMessage, setCustomMessage] = useState('');
   const [requestSent, setRequestSent] = useState(false);
+  const [isSending, setIsSending] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setSearchError(null);
     setSearchedPatient(null);
@@ -28,34 +30,66 @@ export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModal
 
     const clean = searchPhone.replace(/\D/g, '');
     if (clean.length < 10) {
-      setSearchError('Please enter a full 10-digit phone number.');
+      setSearchError('Please enter a valid 10-digit mobile number.');
       setIsSearching(false);
       return;
     }
 
-    setTimeout(() => {
-      // Live search against active patient
-      if (clean === patient.phone || clean.endsWith('23456')) {
-        setSearchedPatient(patient);
-        speak(`Found patient ${patient.name}`);
-      } else {
-        setSearchError(`No registered elder found with phone ending in ${clean.slice(-4)}. Verify the phone number.`);
+    const client = supabase;
+    let found = false;
+
+    // 1. Search in Supabase patient_profiles
+    if (isSupabaseConfigured && client) {
+      try {
+        const { data: dbPatients } = await client
+          .from('patient_profiles')
+          .select('*')
+          .or(`phone.eq.${clean},phone.ilike.%${clean.slice(-10)}%`);
+
+        if (dbPatients && dbPatients.length > 0) {
+          setSearchedPatient(dbPatients[0]);
+          speak(`Found elder ${dbPatients[0].name}`);
+          found = true;
+        }
+      } catch (err) {
+        console.error('Database search error:', err);
       }
-      setIsSearching(false);
-    }, 400);
+    }
+
+    // 2. Fallback search against active patient
+    if (!found) {
+      if (patient && (patient.phone.replace(/\D/g, '').endsWith(clean.slice(-10)) || clean === patient.phone)) {
+        setSearchedPatient(patient);
+        speak(`Found elder ${patient.name}`);
+        found = true;
+      }
+    }
+
+    if (!found) {
+      setSearchError(`No registered elder found with phone +91 ${clean}. Please verify the number or ask the elder to register on CareSync first.`);
+    }
+
+    setIsSearching(false);
   };
 
-  const handleSendRequest = () => {
+  const handleSendRequest = async () => {
     if (!searchedPatient) return;
+    setIsSending(true);
     const msg = customMessage || `${currentUser?.name} (${currentUser?.role}) is requesting authorization to join your Care Circle.`;
-    sendLinkingRequest(searchedPatient.phone, msg);
-    setRequestSent(true);
-    setTimeout(() => {
-      onClose();
-      setRequestSent(false);
-      setSearchedPatient(null);
-      setSearchPhone('');
-    }, 1500);
+    const res = await sendLinkingRequest(searchedPatient.phone, msg);
+    setIsSending(false);
+
+    if (res.success) {
+      setRequestSent(true);
+      setTimeout(() => {
+        onClose();
+        setRequestSent(false);
+        setSearchedPatient(null);
+        setSearchPhone('');
+      }, 2000);
+    } else {
+      setSearchError(res.message);
+    }
   };
 
   return (
@@ -84,12 +118,12 @@ export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModal
 
         {requestSent ? (
           <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center space-y-2">
-            <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto text-xl">
+            <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mx-auto text-xl font-bold">
               ✓
             </div>
             <h4 className="font-bold text-emerald-950 text-sm">Linking Request Dispatched</h4>
             <p className="text-xs text-emerald-700">
-              Elder {searchedPatient?.name} has received your request. Once they accept, their dashboard and records will sync with your portal.
+              Elder {searchedPatient?.name} will receive a prompt directly on their home screen to accept your connection.
             </p>
           </div>
         ) : (
@@ -101,80 +135,77 @@ export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModal
               </label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                    +91
-                  </span>
+                  <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="tel"
-                    placeholder="e.g. 9840123456"
+                    placeholder="Enter 10-digit number (e.g. 9840123456)"
                     value={searchPhone}
                     onChange={e => setSearchPhone(e.target.value)}
                     required
-                    className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-mono font-bold outline-none focus:border-blue-600 transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 font-mono"
                   />
                 </div>
                 <button
                   type="submit"
                   disabled={isSearching}
-                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5"
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all disabled:opacity-60 flex items-center gap-1.5"
                 >
                   <Search className="w-3.5 h-3.5" />
-                  <span>{isSearching ? 'Searching...' : 'Search'}</span>
+                  <span>{isSearching ? 'Searching...' : 'Find Elder'}</span>
                 </button>
               </div>
             </form>
 
             {searchError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-                {searchError}
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{searchError}</span>
               </div>
             )}
 
-            {/* Found Patient Result */}
+            {/* Found Elder Profile Card */}
             {searchedPatient && (
-              <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 space-y-3">
-                <div className="flex items-start justify-between">
+              <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200 space-y-3 animate-fadeIn">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white font-bold text-base flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
                       👴
                     </div>
                     <div>
                       <h4 className="font-extrabold text-slate-900 text-sm">
                         {searchedPatient.name}
                       </h4>
-                      <p className="text-xs text-slate-600">
-                        Age: {searchedPatient.age} Yrs · Phone: +91 {searchedPatient.phone}
+                      <p className="text-xs text-slate-500 font-mono">
+                        +91 {searchedPatient.phone} · Age: {searchedPatient.age || 74}
                       </p>
-                      <span className="text-[10px] font-mono text-blue-700 font-bold">
-                        ABHA: {searchedPatient.abha_id}
-                      </span>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                    Verified Elder
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Verified Profile
                   </span>
                 </div>
 
                 <div>
                   <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                    Personalized Message for the Senior
+                    Add Note / Relation
                   </label>
-                  <textarea
-                    rows={2}
+                  <input
+                    type="text"
+                    placeholder={`e.g. Hi ${searchedPatient.name.split(' ')[0]}, I am your ${currentUser?.role === 'CHILD' ? 'son/daughter' : currentUser?.role === 'DOCTOR' ? 'physician' : 'caretaker'}`}
                     value={customMessage}
                     onChange={e => setCustomMessage(e.target.value)}
-                    placeholder={`Hi ${searchedPatient.name.split(' ')[0]}, ${currentUser?.name} here requesting to link with your health circle.`}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 bg-white text-xs outline-none focus:border-blue-600"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-medium outline-none"
                   />
                 </div>
 
                 <button
                   type="button"
                   onClick={handleSendRequest}
-                  className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2"
+                  disabled={isSending}
+                  className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-60"
                 >
-                  <span>Send Care Circle Request</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <HeartHandshake className="w-4 h-4" />
+                  <span>{isSending ? 'Sending Request...' : `Send Care Circle Request to ${searchedPatient.name.split(' ')[0]}`}</span>
                 </button>
               </div>
             )}
