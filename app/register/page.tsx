@@ -9,14 +9,9 @@ import {
   ArrowLeft, 
   ArrowRight, 
   Phone, 
-  Users, 
-  HeartHandshake, 
   ShieldCheck, 
   Sparkles, 
-  CheckCircle2,
-  Mail,
-  Lock,
-  UserCheck
+  CheckCircle2
 } from 'lucide-react';
 
 export default function RegisterPage() {
@@ -24,7 +19,6 @@ export default function RegisterPage() {
   const { 
     registerUser, 
     verifyOtpAndCompleteRegister, 
-    registerCareRoleUser, 
     signInWithGoogle, 
     speak 
   } = useApp();
@@ -35,13 +29,6 @@ export default function RegisterPage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [age, setAge] = useState('74');
-
-  // Non-Elder fields (Child, Caretaker, Doctor)
-  const [careRoleName, setCareRoleName] = useState('');
-  const [careRoleEmail, setCareRoleEmail] = useState('');
-  const [careRolePhone, setCareRolePhone] = useState('');
-  const [careRolePasscode, setCareRolePasscode] = useState('');
-  const [targetElderPhone, setTargetElderPhone] = useState('9840123456');
 
   // Status & OTP step
   const [step, setStep] = useState<1 | 2>(1);
@@ -82,32 +69,6 @@ export default function RegisterPage() {
       router.push('/dashboard/elder');
     } else {
       setErrorMsg('Invalid OTP code. Please enter 123456.');
-    }
-  };
-
-  // Non-Elder direct registration submit & Supabase DB write
-  const handleCareRoleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setIsSubmitting(true);
-
-    const res = await registerCareRoleUser({
-      name: careRoleName,
-      email: careRoleEmail,
-      phone: careRolePhone,
-      role,
-      passcode: careRolePasscode || '654321',
-      targetElderPhone,
-    });
-
-    setIsSubmitting(false);
-
-    if (res.success) {
-      if (role === 'CHILD') router.push('/dashboard/child');
-      else if (role === 'CARETAKER') router.push('/dashboard/caretaker');
-      else if (role === 'DOCTOR') router.push('/dashboard/doctor');
-    } else {
-      setErrorMsg(res.message);
     }
   };
 
@@ -311,106 +272,55 @@ export default function RegisterPage() {
           ) : (
             /* ============================================================== */
             /* NON-ELDER REGISTRATION: Child, Caretaker, Doctor               */
+            /* Strictly Official Google OAuth · No Manual Inputs Needed       */
             /* ============================================================== */
-            <div className="space-y-4">
-              <form onSubmit={handleCareRoleSubmit} className="space-y-3.5">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    Your Full Name
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={role === 'DOCTOR' ? 'Dr. Priya Nair' : role === 'CARETAKER' ? 'Ramesh Kumar' : 'Karthik Sundaram'}
-                    value={careRoleName}
-                    onChange={e => setCareRoleName(e.target.value)}
-                    required
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 transition-all"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      placeholder="user@example.com"
-                      value={careRoleEmail}
-                      onChange={e => setCareRoleEmail(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 transition-all font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1">
-                      Mobile Number
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="10-digit phone"
-                      value={careRolePhone}
-                      onChange={e => setCareRolePhone(e.target.value)}
-                      required
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 transition-all font-mono"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 block mb-1">
-                    6-Digit Security Passcode
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="654321"
-                    maxLength={6}
-                    value={careRolePasscode}
-                    onChange={e => setCareRolePasscode(e.target.value)}
-                    required
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white text-xs font-semibold outline-none focus:border-blue-600 transition-all font-mono tracking-wider"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
-                    You can connect to your elder&apos;s care circle right from your dashboard after sign-in.
-                  </span>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-500">
-                  CareSync will verify duplicate credentials against Supabase and send an authorization request to the elder.
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-60"
-                >
-                  <UserCheck className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Creating in Database...' : `Register Account as ${role}`}</span>
-                </button>
-              </form>
-
-              {/* Divider */}
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-slate-200"></div>
-                <span className="flex-shrink mx-3 text-xs text-slate-400 font-medium">OR QUICK OAUTH</span>
-                <div className="flex-grow border-t border-slate-200"></div>
+            <div className="space-y-5 text-center py-2">
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-200/80 flex items-center justify-center mx-auto text-2xl shadow-sm">
+                {role === 'CHILD' && '👨‍👩‍👧'}
+                {role === 'CARETAKER' && '🧑‍⚕️'}
+                {role === 'DOCTOR' && '🩺'}
               </div>
 
-              {/* Single Professional Google OAuth Register Button */}
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black tracking-wider uppercase mb-2.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                  1-Click Verified Registration
+                </div>
+                <h3 className="font-black text-slate-900 text-lg tracking-tight">
+                  {role === 'CHILD' && 'Sign Up as Family Admin'}
+                  {role === 'CARETAKER' && 'Sign Up as Verified Caretaker'}
+                  {role === 'DOCTOR' && 'Sign Up as Clinical Doctor'}
+                </h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                  {role === 'CHILD' && 'Connect to elderly parents, manage prescriptions, schedule appointments, and coordinate family care.'}
+                  {role === 'CARETAKER' && 'Verify scheduled doses with live photo 2FA and record daily shift activities.'}
+                  {role === 'DOCTOR' && 'Review adherence logs, update medications, and set patient emergency safety thresholds.'}
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 text-[11px] leading-relaxed max-w-sm mx-auto">
+                No manual email, phone, or password entry required. Your verified profile is authenticated directly via official Google OAuth.
+              </div>
+
+              {/* Single Official Google Registration Button */}
               <button
                 type="button"
                 onClick={() => handleGoogleRegister(role)}
                 disabled={isGoogleLoading}
-                className="w-full py-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-3 active:scale-98 disabled:opacity-60"
+                className="w-full py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center gap-3 active:scale-98 disabled:opacity-60"
               >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 bg-white rounded-full p-0.5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                   <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
                 </svg>
-                <span>{isGoogleLoading ? 'Connecting to Official Google OAuth...' : `Continue with Google as ${role}`}</span>
+                <span>{isGoogleLoading ? 'Connecting to Google OAuth...' : `Sign Up with Google as ${role}`}</span>
               </button>
+
+              <div className="text-[11px] text-slate-400 font-mono">
+                Official Google OAuth · Instant Database Registration
+              </div>
             </div>
           )}
 
