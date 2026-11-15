@@ -1,0 +1,260 @@
+import { 
+  PatientProfile, 
+  CareRoleAccess, 
+  Medication, 
+  DoseLog, 
+  Appointment, 
+  MedicalBill, 
+  CentralAuditLog,
+  EmergencyAlert
+} from './types';
+
+export const INITIAL_PATIENT: PatientProfile = {
+  id: 'a1111111-1111-1111-1111-111111111111',
+  name: 'Sundaram Iyer',
+  age: 74,
+  abha_id: '91-4567-8901-2345',
+  emergency_threshold: 2,
+  travel_mode_active: false,
+  travel_mode_until: null,
+  preferred_language: 'en',
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
+
+export const INITIAL_ROLES: CareRoleAccess[] = [
+  {
+    id: 'b1111111-1111-1111-1111-111111111111',
+    patient_id: INITIAL_PATIENT.id,
+    role: 'ELDER',
+    name: 'Sundaram Iyer',
+    email: 'sundaram.iyer@example.in',
+    phone: '+91 98401 23456',
+    passcode_hash: '1234',
+    shift_expires_at: null,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'b2222222-2222-2222-2222-222222222222',
+    patient_id: INITIAL_PATIENT.id,
+    role: 'CHILD',
+    name: 'Karthik Sundaram',
+    email: 'karthik.sundaram@example.in',
+    phone: '+91 98840 98765',
+    passcode_hash: '654321',
+    shift_expires_at: null,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'b3333333-3333-3333-3333-333333333333',
+    patient_id: INITIAL_PATIENT.id,
+    role: 'CARETAKER',
+    name: 'Ramesh Kumar',
+    email: 'ramesh.care@example.in',
+    phone: '+91 97100 11223',
+    passcode_hash: '987654',
+    shift_expires_at: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(), // Valid until 8 hours
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'b4444444-4444-4444-4444-444444444444',
+    patient_id: INITIAL_PATIENT.id,
+    role: 'DOCTOR',
+    name: 'Dr. Priya Nair',
+    email: 'dr.priya.nair@apollo-hospital.in',
+    phone: '+91 94440 55667',
+    passcode_hash: 'DOC-4481',
+    shift_expires_at: null,
+    created_at: new Date().toISOString(),
+  },
+];
+
+export const INITIAL_MEDICATIONS: Medication[] = [
+  {
+    id: 'c1111111-1111-1111-1111-111111111111',
+    patient_id: INITIAL_PATIENT.id,
+    name: 'Amlodipine',
+    dosage: '5 mg · 1 capsule',
+    schedule_time: '13:00:00',
+    meal_instruction: 'after_food',
+    iot_slot_number: 1,
+    consecutive_misses: 0,
+    max_consecutive_misses: 2,
+    remaining_pills: 28,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'c2222222-2222-2222-2222-222222222222',
+    patient_id: INITIAL_PATIENT.id,
+    name: 'Metformin',
+    dosage: '500 mg · 1 tablet',
+    schedule_time: '08:00:00',
+    meal_instruction: 'after_food',
+    iot_slot_number: 2,
+    consecutive_misses: 0,
+    max_consecutive_misses: 2,
+    remaining_pills: 45,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'c3333333-3333-3333-3333-333333333333',
+    patient_id: INITIAL_PATIENT.id,
+    name: 'Atorvastatin',
+    dosage: '10 mg · 1 tablet',
+    schedule_time: '20:00:00',
+    meal_instruction: 'after_food',
+    iot_slot_number: 3,
+    consecutive_misses: 0,
+    max_consecutive_misses: 2,
+    remaining_pills: 14,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'c4444444-4444-4444-4444-444444444444',
+    patient_id: INITIAL_PATIENT.id,
+    name: 'Vitamin D3',
+    dosage: '60,000 IU · 1 capsule',
+    schedule_time: '08:00:00',
+    meal_instruction: 'with_food',
+    iot_slot_number: 4,
+    consecutive_misses: 0,
+    max_consecutive_misses: 1,
+    remaining_pills: 8,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
+
+export const INITIAL_DOSE_LOGS: DoseLog[] = [
+  {
+    id: 'd1111111-1111-1111-1111-111111111111',
+    patient_id: INITIAL_PATIENT.id,
+    medication_id: INITIAL_MEDICATIONS[1].id, // Metformin
+    scheduled_at: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(),
+    status: 'SENSOR_VERIFIED',
+    verification_method: 'IOT_BOX',
+    verified_at: new Date(new Date().setHours(8, 4, 12, 0)).toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'd2222222-2222-2222-2222-222222222222',
+    patient_id: INITIAL_PATIENT.id,
+    medication_id: INITIAL_MEDICATIONS[3].id, // Vitamin D3
+    caretaker_id: INITIAL_ROLES[2].id, // Ramesh
+    scheduled_at: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(),
+    status: 'DUAL_VERIFIED',
+    verification_method: 'PHOTO_2FA',
+    photo_proof_url: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=300',
+    verified_at: new Date(new Date().setHours(8, 15, 30, 0)).toISOString(),
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'd3333333-3333-3333-3333-333333333333',
+    patient_id: INITIAL_PATIENT.id,
+    medication_id: INITIAL_MEDICATIONS[0].id, // Amlodipine
+    scheduled_at: new Date(new Date().setHours(13, 0, 0, 0)).toISOString(),
+    status: 'SCHEDULED',
+    verification_method: null,
+    verified_at: null,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'd4444444-4444-4444-4444-444444444444',
+    patient_id: INITIAL_PATIENT.id,
+    medication_id: INITIAL_MEDICATIONS[2].id, // Atorvastatin
+    scheduled_at: new Date(new Date().setHours(20, 0, 0, 0)).toISOString(),
+    status: 'SCHEDULED',
+    verification_method: null,
+    verified_at: null,
+    created_at: new Date().toISOString(),
+  },
+];
+
+export const INITIAL_APPOINTMENTS: Appointment[] = [
+  {
+    id: 'e1111111-1111-1111-1111-111111111111',
+    patient_id: INITIAL_PATIENT.id,
+    doctor_name: 'Dr. Priya Nair',
+    specialty: 'Cardiology Follow-up',
+    date_time: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    location: 'Apollo Speciality Hospital, T. Nagar, Chennai',
+    notes: 'Review BP trends and adjust Amlodipine dosage if systolic < 130.',
+    status: 'CONFIRMED',
+    created_at: new Date().toISOString(),
+  },
+];
+
+export const INITIAL_BILLS: MedicalBill[] = [
+  {
+    id: 'f1111111-1111-1111-1111-111111111111',
+    patient_id: INITIAL_PATIENT.id,
+    title: 'MedPlus Pharmacy - Monthly Refill',
+    amount: 1450.00,
+    category: 'medication',
+    uploaded_by_role: 'CHILD',
+    receipt_url: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500',
+    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'f2222222-2222-2222-2222-222222222222',
+    patient_id: INITIAL_PATIENT.id,
+    title: 'Comprehensive Lipid Profile & HbA1c Lab Test',
+    amount: 1800.00,
+    category: 'lab_test',
+    uploaded_by_role: 'CHILD',
+    receipt_url: 'https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=500',
+    created_at: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
+export const INITIAL_AUDIT_LOGS: CentralAuditLog[] = [
+  {
+    id: 'g1111111-1111-1111-1111-111111111111',
+    patient_id: INITIAL_PATIENT.id,
+    actor_name: 'Dr. Priya Nair',
+    actor_role: 'DOCTOR',
+    action_type: 'PRESCRIPTION_UPDATED',
+    description: 'Adjusted Amlodipine schedule time from 14:00 to 13:00 (after lunch).',
+    previous_value: { schedule_time: '14:00:00' },
+    new_value: { schedule_time: '13:00:00' },
+    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'g2222222-2222-2222-2222-222222222222',
+    patient_id: INITIAL_PATIENT.id,
+    actor_name: 'IoT Pillbox (ESP32)',
+    actor_role: 'IOT_DEVICE',
+    action_type: 'SENSOR_DOSE_DISPENSED',
+    description: 'Slot 2 (Metformin 500mg) lid opened and pill lifted. Status marked SENSOR_VERIFIED.',
+    previous_value: { status: 'SCHEDULED' },
+    new_value: { status: 'SENSOR_VERIFIED' },
+    created_at: new Date(new Date().setHours(8, 4, 12, 0)).toISOString(),
+  },
+  {
+    id: 'g3333333-3333-3333-3333-333333333333',
+    patient_id: INITIAL_PATIENT.id,
+    actor_name: 'Ramesh Kumar',
+    actor_role: 'CARETAKER',
+    action_type: 'CARETAKER_DOSE_SUBMITTED',
+    description: 'Submitted photo 2FA proof for Vitamin D3 morning dose. Upgraded to DUAL_VERIFIED.',
+    previous_value: { status: 'SCHEDULED' },
+    new_value: { status: 'DUAL_VERIFIED', photo_proof: 'captured' },
+    created_at: new Date(new Date().setHours(8, 15, 30, 0)).toISOString(),
+  },
+  {
+    id: 'g4444444-4444-4444-4444-444444444444',
+    patient_id: INITIAL_PATIENT.id,
+    actor_name: 'Karthik Sundaram',
+    actor_role: 'CHILD',
+    action_type: 'ABHA_SYNC_REQUESTED',
+    description: 'Linked and synchronized patient health profile with ABHA Health ID 91-4567-8901-2345.',
+    previous_value: null,
+    new_value: { abha_status: 'VERIFIED_ACTIVE' },
+    created_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
+export const INITIAL_EMERGENCY_ALERTS: EmergencyAlert[] = [];
