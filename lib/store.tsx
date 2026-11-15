@@ -13,8 +13,10 @@ import {
   EmergencyAlert,
   LinkingRequest,
   AbhaRecord,
-  UserSession
+  UserSession,
+  Language
 } from './types';
+import { TRANSLATIONS, Translations } from './translations';
 import { 
   INITIAL_PATIENT, 
   INITIAL_ROLES, 
@@ -97,6 +99,11 @@ interface AppContextType {
   toggleAbhaConsent: (recordId: string) => void;
   linkAbhaId: (abhaId: string, abhaAddress?: string) => Promise<boolean>;
   unlinkAbhaId: () => Promise<void>;
+
+  // Multilingual Support
+  language: Language;
+  setLanguage: (lang: Language) => void;
+  t: Translations;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -106,6 +113,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<CareRoleAccess | null>(null);
   const [currentPatientId, setCurrentPatientId] = useState<string>(INITIAL_PATIENT.id);
   const [patient, setPatient] = useState<PatientProfile>(INITIAL_PATIENT);
+  const [language, setLanguageState] = useState<Language>('en');
   const [roles, setRoles] = useState<CareRoleAccess[]>(INITIAL_ROLES);
   const [medications, setMedications] = useState<Medication[]>(INITIAL_MEDICATIONS);
   const [doseLogs, setDoseLogs] = useState<DoseLog[]>(INITIAL_DOSE_LOGS);
@@ -241,14 +249,59 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Web Speech API Voice Feedback
-  const speak = (text: string) => {
+  // Restore persistent language preference
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedLang = localStorage.getItem('caresync_language') as Language;
+      if (savedLang && (savedLang === 'en' || savedLang === 'ta' || savedLang === 'hi')) {
+        setLanguageState(savedLang);
+      }
+    }
+  }, []);
+
+  const setLanguage = (lang: Language) => {
+    setLanguageState(lang);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('caresync_language', lang);
+      } catch {}
+    }
+    const client = supabase;
+    if (isSupabaseConfigured && client && patient?.id) {
+      client.from('patient_profiles').update({ preferred_language: lang }).eq('id', patient.id).then();
+    }
+    const welcome = lang === 'ta' ? 'தமிழ் மொழி தேர்ந்தெடுக்கப்பட்டது.' : lang === 'hi' ? 'हिन्दी भाषा का चयन किया गया।' : 'English language selected.';
+    speak(welcome, lang);
+  };
+
+  // Translations dictionary for active language
+  const t = TRANSLATIONS[language] || TRANSLATIONS.en;
+
+  // Web Speech API Multilingual Voice Feedback
+  const speak = (text: string, customLang?: Language) => {
     if (!isVoiceEnabled || typeof window === 'undefined') return;
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.9;
       utterance.pitch = 1.0;
+
+      const targetLang = customLang || language;
+      if (targetLang === 'ta') {
+        utterance.lang = 'ta-IN';
+      } else if (targetLang === 'hi') {
+        utterance.lang = 'hi-IN';
+      } else {
+        utterance.lang = 'en-IN';
+      }
+
+      // Match native device voice if available
+      const voices = window.speechSynthesis.getVoices();
+      const matched = voices.find(v => v.lang.startsWith(targetLang));
+      if (matched) {
+        utterance.voice = matched;
+      }
+
       window.speechSynthesis.speak(utterance);
     } catch {
       // Speech unsupported
@@ -1352,6 +1405,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         toggleAbhaConsent,
         linkAbhaId,
         unlinkAbhaId,
+        language,
+        setLanguage,
+        t,
       }}
     >
       {children}

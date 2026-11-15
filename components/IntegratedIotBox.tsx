@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 export default function IntegratedIotBox() {
-  const { medications, doseLogs, simulateIotSlotDispense, speak } = useApp();
+  const { medications, doseLogs, simulateIotSlotDispense, speak, t } = useApp();
   const [openSlots, setOpenSlots] = useState<{ [key: number]: boolean }>({});
 
   const handleDispense = async (slotNumber: number) => {
@@ -46,15 +46,15 @@ export default function IntegratedIotBox() {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                ESP32 Smart Dispenser Telemetry
+                {t.iotDispenserTitle}
               </h3>
               <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-sm">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                ONLINE
+                {t.online}
               </span>
             </div>
             <p className="text-xs font-medium text-slate-500 mt-0.5">
-              Physical 4-slot hardware box with reed switches & load-cell weight telemetry
+              {t.iotDispenserDesc}
             </p>
           </div>
         </div>
@@ -156,7 +156,7 @@ export default function IntegratedIotBox() {
               <div className="my-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-1.5 font-mono text-[11px]">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 flex items-center gap-1 font-sans font-semibold text-[10px]">
-                    <Scale className="w-3 h-3 text-slate-400" /> Load Cell:
+                    <Scale className="w-3 h-3 text-slate-400" /> {t.loadCell}:
                   </span>
                   <span className={`font-bold ${isVerified ? 'text-emerald-700' : 'text-slate-800'}`}>
                     {isVerified ? '0.0g (Lifted)' : '2.4g (Loaded)'}
@@ -165,10 +165,10 @@ export default function IntegratedIotBox() {
 
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 flex items-center gap-1 font-sans font-semibold text-[10px]">
-                    {isLidOpen ? <Unlock className="w-3 h-3 text-blue-500" /> : <Lock className="w-3 h-3 text-slate-400" />} Reed Switch:
+                    {isLidOpen ? <Unlock className="w-3 h-3 text-blue-500" /> : <Lock className="w-3 h-3 text-slate-400" />} {t.reedSwitch}:
                   </span>
                   <span className={`font-bold ${isLidOpen ? 'text-blue-600' : 'text-slate-600'}`}>
-                    {isLidOpen ? 'LOW (Open)' : 'HIGH (Sealed)'}
+                    {isLidOpen ? t.unsealed : t.sealed}
                   </span>
                 </div>
               </div>
@@ -188,7 +188,7 @@ export default function IntegratedIotBox() {
                 {isVerified ? (
                   <>
                     <Check className="w-4 h-4 text-emerald-700 stroke-[3]" />
-                    <span>Dose Verified</span>
+                    <span>{t.taken}</span>
                   </>
                 ) : isLidOpen ? (
                   <>
@@ -198,7 +198,7 @@ export default function IntegratedIotBox() {
                 ) : (
                   <>
                     <Unlock className="w-3.5 h-3.5" />
-                    <span>Open Lid & Lift Pill</span>
+                    <span>{t.openAndLift}</span>
                   </>
                 )}
               </button>

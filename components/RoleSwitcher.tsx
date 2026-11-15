@@ -29,21 +29,24 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
     isVoiceEnabled, 
     toggleVoice, 
     medications,
-    simulateMissedDose 
+    simulateMissedDose,
+    language,
+    setLanguage,
+    t
   } = useApp();
 
   const getRoleBadge = (role: string | null) => {
     switch (role) {
       case 'ELDER':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">👴 Elder Portal</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-200">{t.elderPortal}</span>;
       case 'CHILD':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">👨‍👩‍👧 Family Admin</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">{t.familyAdmin}</span>;
       case 'CARETAKER':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">🧑‍⚕️ Caretaker Duty</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">{t.caretakerDuty}</span>;
       case 'DOCTOR':
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">🩺 Clinical Doctor</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">{t.clinicalDoctor}</span>;
       default:
-        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">Visitor</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700">{t.visitor}</span>;
     }
   };
 
@@ -76,6 +79,43 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
 
         {/* Navigation & Controls */}
         <div className="flex items-center gap-2">
+          {/* Multilingual Switcher: EN | தமிழ் | हिंदी */}
+          <div className="flex items-center bg-slate-100 rounded-xl p-0.5 border border-slate-200 text-xs font-bold shadow-inner">
+            <button
+              onClick={() => setLanguage('en')}
+              className={`px-2 py-1 rounded-lg transition-all ${
+                language === 'en'
+                  ? 'bg-white text-slate-950 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}
+              title="English"
+            >
+              EN
+            </button>
+            <button
+              onClick={() => setLanguage('ta')}
+              className={`px-2 py-1 rounded-lg transition-all ${
+                language === 'ta'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-blue-700'
+              }`}
+              title="தமிழ் (Tamil)"
+            >
+              தமிழ்
+            </button>
+            <button
+              onClick={() => setLanguage('hi')}
+              className={`px-2 py-1 rounded-lg transition-all ${
+                language === 'hi'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-amber-700'
+              }`}
+              title="हिन्दी (Hindi)"
+            >
+              हिंदी
+            </button>
+          </div>
+
           {/* Link to ABDM Gateway */}
           <Link
             href="/abdm"
@@ -86,7 +126,7 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-            <span className="hidden md:inline">ABDM</span> Health Locker
+            <span className="hidden md:inline">{t.abdmLocker}</span>
           </Link>
 
           {/* Link to Central Audit Ledger */}
@@ -99,7 +139,7 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
             }`}
           >
             <History className="w-3.5 h-3.5 text-slate-600" />
-            <span className="hidden sm:inline">Audit</span> Ledger
+            <span className="hidden sm:inline">{t.auditLedger}</span>
           </Link>
 
           {/* Test Missed Dose Trigger for Judges */}
@@ -113,13 +153,13 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-medium transition-all"
           >
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-            <span className="hidden lg:inline">Simulate</span> Miss
+            <span className="hidden lg:inline">{t.simulateMiss}</span>
           </button>
 
           {/* Voice Audio Feedback Toggle */}
           <button
             onClick={toggleVoice}
-            title={isVoiceEnabled ? 'Voice feedback active' : 'Voice muted'}
+            title={isVoiceEnabled ? t.voiceActive : t.voiceMuted}
             className={`p-2 rounded-xl border transition-all ${
               isVoiceEnabled
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
@@ -139,7 +179,7 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 text-xs font-bold transition-all border border-slate-200"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>Sign Out</span>
+              <span>{t.signOut}</span>
             </button>
           ) : (
             <Link
@@ -147,7 +187,7 @@ export default function RoleSwitcher({ onOpenIotModal }: RoleSwitcherProps) {
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-all"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In</span>
+              <span>{t.signIn}</span>
             </Link>
           )}
         </div>

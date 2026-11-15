@@ -11,7 +11,7 @@ interface ConnectElderModalProps {
 }
 
 export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModalProps) {
-  const { patient, currentUser, sendLinkingRequest, speak } = useApp();
+  const { patient, currentUser, sendLinkingRequest, speak, t } = useApp();
   const [searchPhone, setSearchPhone] = useState('');
   const [searchedPatient, setSearchedPatient] = useState<any | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -133,7 +133,7 @@ export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModal
             {/* Search Input Form */}
             <form onSubmit={handleSearch} className="space-y-2">
               <label className="text-xs font-bold text-slate-700 block">
-                Elder&apos;s Registered Mobile Number
+                {t.searchElderPhone}
               </label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
@@ -153,7 +153,7 @@ export default function ConnectElderModal({ isOpen, onClose }: ConnectElderModal
                   className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all disabled:opacity-60 flex items-center gap-1.5"
                 >
                   <Search className="w-3.5 h-3.5" />
-                  <span>{isSearching ? 'Searching...' : 'Find Elder'}</span>
+                  <span>{isSearching ? 'Searching...' : t.findElder}</span>
                 </button>
               </div>
             </form>
