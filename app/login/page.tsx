@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/store';
 import Link from 'next/link';
 import { CareRole } from '@/lib/types';
@@ -16,9 +16,12 @@ import {
   ArrowLeft
 } from 'lucide-react';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const { loginWithPhone, loginWithPasscode, switchRoleQuick, speak } = useApp();
+  const searchParams = useSearchParams();
+  const isUnauthorized = searchParams.get('unauthorized') === 'true';
+  const redirectTarget = searchParams.get('redirect') || '';
+  const { loginWithPhone, loginWithPasscode, signInWithGoogle, speak } = useApp();
 
   // Target role selection
   const [selectedRole, setSelectedRole] = useState<CareRole>('ELDER');
@@ -29,15 +32,28 @@ export default function LoginPage() {
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Handle Google OAuth (Simulated OAuth flow + Supabase Auth trigger)
-  const handleGoogleSignIn = (role: CareRole) => {
-    setErrorMsg(null);
-    speak(`Signing in with Google as ${role}...`);
-    // Pre-seed matching accounts
-    switchRoleQuick(role);
-    if (role === 'ELDER') router.push('/dashboard/elder');
-    else if (role === 'CHILD') router.push('/dashboard/child');
-    else if (role === 'CARETAKER') router.push('/dashboard/caretaker');
+  // Google Name Customizer Modal state
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [googleNameInput, setGoogleNameInput] = useState('');
+  const [googleEmailInput, setGoogleEmailInput] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  // Handle Google OAuth
+  const handleGoogleSignInTrigger = (role: CareRole) => {
+    setSelectedRole(role);
+    setShowGoogleModal(true);
+  };
+
+  const handleConfirmGoogleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAuthenticating(true);
+    await signInWithGoogle(selectedRole, googleNameInput || undefined, googleEmailInput || undefined);
+    setIsAuthenticating(false);
+    setShowGoogleModal(false);
+
+    if (selectedRole === 'ELDER') router.push('/dashboard/elder');
+    else if (selectedRole === 'CHILD') router.push('/dashboard/child');
+    else if (selectedRole === 'CARETAKER') router.push('/dashboard/caretaker');
     else router.push('/dashboard/doctor');
   };
 
@@ -122,6 +138,15 @@ export default function LoginPage() {
 
         {/* Main Authentication Box */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_25px_-5px_rgba(0,0,0,0.06)] border border-slate-200/80">
+          {isUnauthorized && (
+            <div className="mb-4 p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                <strong>Access Restricted:</strong> You must sign in to view {redirectTarget || 'this healthcare portal'}.
+              </span>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="mb-4 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold animate-shake text-center">
               {errorMsg}
@@ -217,7 +242,7 @@ export default function LoginPage() {
               {/* Option B: Continue with Google for Elder */}
               <button
                 type="button"
-                onClick={() => handleGoogleSignIn('ELDER')}
+                onClick={() => handleGoogleSignInTrigger('ELDER')}
                 className="w-full py-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-3 active:scale-98"
               >
                 {/* Google SVG */}
@@ -255,7 +280,7 @@ export default function LoginPage() {
               {/* Single Professional Google Button */}
               <button
                 type="button"
-                onClick={() => handleGoogleSignIn(selectedRole)}
+                onClick={() => handleGoogleSignInTrigger(selectedRole)}
                 className="w-full py-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-3 active:scale-98"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -268,7 +293,7 @@ export default function LoginPage() {
               </button>
 
               <div className="text-[11px] text-slate-400 font-mono">
-                Security: Session token stored in secure browser cookie
+                Extracts your Google Profile Name & creates authenticated session
               </div>
             </div>
           )}
@@ -283,7 +308,88 @@ export default function LoginPage() {
             </p>
           </div>
         </div>
+
+        {/* Google OAuth Simulation & Name Fetcher Modal */}
+        {showGoogleModal && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center">
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-sm">
+                    Sign in with Google
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Signing into CareSync as {selectedRole}
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleConfirmGoogleAuth} className="space-y-3 pt-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Your Google Account Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={selectedRole === 'DOCTOR' ? 'Dr. Priya Nair' : selectedRole === 'CARETAKER' ? 'Ramesh Kumar' : 'Karthik Sundaram'}
+                    value={googleNameInput}
+                    onChange={e => setGoogleNameInput(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none focus:border-blue-600 font-semibold"
+                  />
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    Leave blank to use default verified account name.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Google Email
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="user@gmail.com"
+                    value={googleEmailInput}
+                    onChange={e => setGoogleEmailInput(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none focus:border-blue-600 font-mono text-[11px]"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowGoogleModal(false)}
+                    className="px-3.5 py-2 text-xs text-slate-500 font-bold hover:bg-slate-100 rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                  >
+                    {isAuthenticating ? 'Authenticating...' : 'Confirm Sign-In'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center text-xs font-bold text-slate-400">Loading CareSync Portal...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

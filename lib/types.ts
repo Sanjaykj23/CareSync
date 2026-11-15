@@ -139,6 +139,8 @@ export interface UserSession {
   role: CareRole;
   name: string;
   phone: string;
+  email?: string;
+  avatar_url?: string | null;
 }
 
 export interface AbhaRecord {
