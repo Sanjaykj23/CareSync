@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/lib/store';
 import DigitalClock from './DigitalClock';
+import IntegratedIotBox from './IntegratedIotBox';
+import LinkingRequestsTray from './LinkingRequestsTray';
+import Link from 'next/link';
 import { 
   Bell, 
   Check, 
@@ -10,13 +13,12 @@ import {
   Heart, 
   Zap, 
   PhoneCall, 
-  ShieldAlert, 
   Users, 
   Home as HomeIcon, 
-  Pill, 
-  User, 
-  AlertCircle,
-  Volume2
+  Volume2,
+  ShieldCheck,
+  Cpu,
+  FileText
 } from 'lucide-react';
 
 export default function ElderPortal() {
@@ -26,25 +28,26 @@ export default function ElderPortal() {
     doseLogs, 
     takeDose, 
     snoozeDose, 
-    speak 
+    speak,
+    linkingRequests 
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'home' | 'pills' | 'family'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'pills' | 'family' | 'iot'>('home');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<'morning' | 'noon' | 'evening' | 'night'>('noon');
   const [showSosModal, setShowSosModal] = useState(false);
   const [sosCountdown, setSosCountdown] = useState(5);
   const [isSosCalling, setIsSosCalling] = useState(false);
+
+  const pendingRequestsCount = linkingRequests.filter(r => r.status === 'PENDING').length;
 
   // Active afternoon pill (Amlodipine) or next scheduled pill
   const activePill = medications.find(m => m.name.toLowerCase().includes('amlodipine')) || medications[0];
   const activeDose = doseLogs.find(d => d.medication_id === activePill?.id && d.status === 'SCHEDULED');
   const isTaken = activeDose ? false : true;
 
-  // Calculate taken pills count
   const takenCount = doseLogs.filter(d => d.status !== 'SCHEDULED' && d.status !== 'MISSED').length;
   const totalCount = doseLogs.length || 4;
 
-  // Handle SOS countdown timer
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (showSosModal && sosCountdown > 0 && !isSosCalling) {
@@ -73,19 +76,27 @@ export default function ElderPortal() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-60px)] pb-28 pt-4 px-3 sm:px-6 max-w-5xl mx-auto">
-      {/* 1. Header with greeting and notification bell */}
-      <header className="flex items-center justify-between mb-5">
+    <div className="relative min-h-[calc(100vh-60px)] pb-32 pt-4 px-3 sm:px-6 max-w-5xl mx-auto space-y-6">
+      {/* 1. Header with greeting, ABHA status and notification bell */}
+      <header className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-sm bg-gradient-to-tr from-amber-200 to-orange-300 flex items-center justify-center text-amber-900 font-bold text-lg">
             👴
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              Hi, {patient.name.split(' ')[0]}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                Hi, {patient.name.split(' ')[0]}
+              </h1>
+              <Link
+                href="/abdm"
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 flex items-center gap-1 hover:bg-blue-200 transition-all"
+              >
+                <ShieldCheck className="w-3 h-3 text-blue-600" /> ABHA Active
+              </Link>
+            </div>
             <p className="text-xs font-medium text-slate-500">
-              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}
+              {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })} · +91 {patient.phone}
             </p>
           </div>
         </div>
@@ -98,21 +109,30 @@ export default function ElderPortal() {
           >
             <Volume2 className="w-5 h-5" />
           </button>
-          <div className="relative">
-            <button className="w-10 h-10 rounded-full bg-white border border-slate-200 shadow-soft flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-all">
-              <Bell className="w-5 h-5" />
-            </button>
-            <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-          </div>
+
+          <button
+            onClick={() => setActiveTab('family')}
+            className="relative w-10 h-10 rounded-full bg-white border border-slate-200 shadow-soft flex items-center justify-center text-slate-700 hover:bg-slate-50 transition-all"
+            title="Care Circle Linking Requests"
+          >
+            <Bell className="w-5 h-5" />
+            {pendingRequestsCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white animate-bounce">
+                {pendingRequestsCount}
+              </span>
+            )}
+          </button>
         </div>
       </header>
 
-      {/* 2. Main Content Tabs */}
+      {/* 2. Direct On-Screen IoT Pillbox Dispenser */}
+      <IntegratedIotBox />
+
+      {/* 3. Main Content: Active Hero Pill Card & Metrics */}
       {activeTab === 'home' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Left Column: Noon Active Pill Card & Time Pills */}
           <div className="lg:col-span-7 flex flex-col gap-5">
-            {/* Greeting */}
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
                 Time for your <span className="text-blue-600">afternoon pills</span>
@@ -121,18 +141,16 @@ export default function ElderPortal() {
 
             {/* Giant Hero Card for Active Pill */}
             <div className="relative bg-white rounded-4xl p-6 sm:p-8 shadow-soft border border-slate-100/80 overflow-hidden">
-              {/* Top Badge: "In 25 min" / "Ready" */}
               <div className="flex items-center justify-between mb-4">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-50 text-orange-600 border border-orange-200 text-xs font-semibold">
                   <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
                   {isTaken ? 'Completed' : 'In 25 min'}
                 </div>
                 <span className="text-xs font-medium text-slate-400">
-                  IoT Box Slot {activePill?.iot_slot_number || 1}
+                  Dispenser Slot {activePill?.iot_slot_number || 1}
                 </span>
               </div>
 
-              {/* Main Pill Info & Digital LED Time Display */}
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <DigitalClock value="13:00" size="giant" color="dark" />
@@ -144,7 +162,6 @@ export default function ElderPortal() {
                   </p>
                 </div>
 
-                {/* 3D Pill Capsule Graphic */}
                 <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-gradient-to-br from-blue-100 to-sky-50 flex items-center justify-center p-3 shadow-inner relative group">
                   <div className="w-16 h-8 bg-gradient-to-r from-blue-600 via-blue-500 to-sky-300 rounded-full transform -rotate-45 shadow-lg shadow-blue-500/30 flex items-center justify-center text-white text-[10px] font-bold">
                     Rx
@@ -153,7 +170,6 @@ export default function ElderPortal() {
                 </div>
               </div>
 
-              {/* Action Buttons: "✓ I took it" & "Later" */}
               <div className="mt-8 flex items-center gap-3">
                 <button
                   onClick={() => {
@@ -187,7 +203,7 @@ export default function ElderPortal() {
               </div>
             </div>
 
-            {/* Time Segments (Morning, Noon, Evening, Night) */}
+            {/* Time Segments */}
             <div className="grid grid-cols-4 gap-2 bg-white p-2 rounded-2xl border border-slate-100 shadow-soft">
               {[
                 { id: 'morning', label: 'Morning', icon: '✓' },
@@ -214,35 +230,6 @@ export default function ElderPortal() {
                 );
               })}
             </div>
-
-            {/* Online Caretaker mini badge */}
-            <div className="bg-emerald-50/80 border border-emerald-200/80 rounded-2xl p-3.5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <div className="w-9 h-9 rounded-full bg-emerald-200 text-emerald-800 font-bold flex items-center justify-center text-sm">
-                    RK
-                  </div>
-                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white"></span>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold text-emerald-900 flex items-center gap-1.5">
-                    <span>Ramesh Kumar</span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">
-                      Online Caretaker
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-emerald-700">
-                    Shift active until 18:00 · 2FA verified
-                  </p>
-                </div>
-              </div>
-              <a
-                href="tel:+919710011223"
-                className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-sm hover:bg-emerald-700 transition-all"
-              >
-                <PhoneCall className="w-4 h-4" />
-              </a>
-            </div>
           </div>
 
           {/* Right Column: Today's Pills & Metrics */}
@@ -258,7 +245,6 @@ export default function ElderPortal() {
                 </span>
               </div>
 
-              {/* Pill items list */}
               <div className="flex flex-col gap-2.5">
                 {medications.map(med => {
                   const dose = doseLogs.find(d => d.medication_id === med.id);
@@ -290,7 +276,6 @@ export default function ElderPortal() {
                         </div>
                       </div>
 
-                      {/* Status indicator or Next button */}
                       {isDone ? (
                         <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
                           <Check className="w-4 h-4 stroke-[3]" />
@@ -311,16 +296,14 @@ export default function ElderPortal() {
               </div>
             </div>
 
-            {/* Metrics: Heart Rate & Weekly Adherence */}
+            {/* Metrics */}
             <div className="grid grid-cols-2 gap-3.5">
-              {/* Heart Rate Widget */}
               <div className="bg-white rounded-3xl p-4 sm:p-5 shadow-soft border border-slate-100">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-rose-500 mb-2">
                   <Heart className="w-4 h-4 fill-rose-500" />
                   <span>Heart rate</span>
                 </div>
                 <DigitalClock value="72" size="md" color="dark" suffix="bpm" />
-                {/* Mini dot chart */}
                 <div className="flex items-end gap-1 h-8 mt-3 mb-1">
                   {[40, 60, 55, 75, 70, 85, 72].map((val, idx) => (
                     <div
@@ -335,7 +318,6 @@ export default function ElderPortal() {
                 </span>
               </div>
 
-              {/* Weekly Streak Widget */}
               <div className="bg-slate-900 rounded-3xl p-4 sm:p-5 shadow-soft text-white">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 mb-2">
                   <Zap className="w-4 h-4 fill-amber-400" />
@@ -344,7 +326,6 @@ export default function ElderPortal() {
                 <div className="text-white">
                   <DigitalClock value="92" size="md" color="blue" suffix="%" className="text-white" />
                 </div>
-                {/* 6-day streak dots */}
                 <div className="flex items-center gap-1.5 mt-3 mb-1">
                   {[true, true, true, true, true, true, false].map((active, i) => (
                     <span
@@ -362,112 +343,14 @@ export default function ElderPortal() {
         </div>
       )}
 
-      {/* 3. Care Circle Tab (Image 4 right side) */}
+      {/* 4. Care Circle & Consent Requests Tab */}
       {activeTab === 'family' && (
-        <div className="max-w-xl mx-auto bg-white rounded-4xl p-6 sm:p-8 shadow-soft border border-slate-100">
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">
-            Your care circle
-          </h2>
-          <p className="text-sm text-slate-500 mb-6">
-            Authorized family members and doctors keeping you safe.
-          </p>
-
-          <div className="flex flex-col gap-3">
-            {/* Contact 1: Karthik (Child) */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-blue-600 text-white font-bold flex items-center justify-center text-base">
-                  K
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900">Karthik Sundaram</h4>
-                  <p className="text-xs text-slate-500">Son · Gets missed-pill alerts</p>
-                </div>
-              </div>
-              <a
-                href="tel:+919884098765"
-                className="w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-700 hover:text-blue-600 flex items-center justify-center shadow-sm"
-              >
-                <PhoneCall className="w-4 h-4" />
-              </a>
-            </div>
-
-            {/* Contact 2: Dr. Priya Nair */}
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-base">
-                  P
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="font-bold text-slate-900">Dr. Priya Nair</h4>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span className="text-[10px] text-emerald-700 font-semibold">Online</span>
-                  </div>
-                  <p className="text-xs text-slate-500">Doctor · Cardiologist (Apollo Hospital)</p>
-                </div>
-              </div>
-              <a
-                href="tel:+919444055667"
-                className="w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center shadow-sm"
-              >
-                <PhoneCall className="w-4 h-4" />
-              </a>
-            </div>
-
-            {/* Contact 3: Ramesh Kumar */}
-            <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200/80 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-purple-600 text-white font-bold flex items-center justify-center text-base">
-                  R
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-900">Ramesh Kumar</h4>
-                  <p className="text-xs text-slate-500">Caretaker · On active duty</p>
-                </div>
-              </div>
-              <a
-                href="tel:+919710011223"
-                className="w-10 h-10 rounded-full bg-white border border-slate-200 text-slate-700 hover:text-purple-600 flex items-center justify-center shadow-sm"
-              >
-                <PhoneCall className="w-4 h-4" />
-              </a>
-            </div>
-          </div>
-
-          {/* Privacy Toggles (Image 4 bottom right) */}
-          <div className="mt-8 border-t border-slate-100 pt-6">
-            <h4 className="text-sm font-bold text-slate-800 mb-3">
-              What your family sees
-            </h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600 font-medium">Pill status</span>
-                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-                  Shared
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600 font-medium">Heart rate</span>
-                <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-                  Shared
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <div>
-                  <span className="text-slate-600 font-medium block">GPS Location</span>
-                  <span className="text-xs text-slate-400">Only shared during SOS emergency</span>
-                </div>
-                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                  SOS Only
-                </span>
-              </div>
-            </div>
-          </div>
+        <div className="space-y-6">
+          <LinkingRequestsTray />
         </div>
       )}
 
-      {/* 4. Bottom Sticky Navigation with Giant Glowing SOS Pill Button */}
+      {/* 5. Bottom Sticky Navigation with Giant Glowing SOS Pill Button */}
       <nav className="fixed bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-md px-4 z-30">
         <div className="bg-white/95 backdrop-blur-xl border border-slate-200/80 rounded-full py-2 px-3 shadow-float flex items-center justify-between">
           <button
@@ -484,15 +367,26 @@ export default function ElderPortal() {
 
           <button
             onClick={() => setActiveTab('family')}
-            className={`flex flex-col items-center gap-1 py-1 px-4 rounded-full transition-all ${
+            className={`relative flex flex-col items-center gap-1 py-1 px-4 rounded-full transition-all ${
               activeTab === 'family'
                 ? 'bg-blue-600 text-white font-bold'
                 : 'text-slate-500 hover:text-slate-900'
             }`}
           >
             <Users className="w-5 h-5" />
-            <span className="text-[10px]">Family</span>
+            <span className="text-[10px]">Requests</span>
+            {pendingRequestsCount > 0 && (
+              <span className="absolute top-0 right-3 w-2 h-2 rounded-full bg-red-500"></span>
+            )}
           </button>
+
+          <Link
+            href="/abdm"
+            className="flex flex-col items-center gap-1 py-1 px-4 rounded-full text-slate-500 hover:text-slate-900 transition-all"
+          >
+            <FileText className="w-5 h-5 text-blue-600" />
+            <span className="text-[10px]">ABHA</span>
+          </Link>
 
           {/* Giant Glowing Red SOS Floating Action Button */}
           <button
@@ -504,10 +398,9 @@ export default function ElderPortal() {
         </div>
       </nav>
 
-      {/* 5. Emergency SOS Full-Screen Overlay Modal (Faithful to Image 4 Center Screen) */}
+      {/* 6. Emergency SOS Full-Screen Overlay Modal */}
       {showSosModal && (
         <div className="fixed inset-0 z-50 bg-gradient-to-b from-red-600 via-red-600 to-rose-700 text-white flex flex-col justify-between p-6 sm:p-10 animate-fadeIn">
-          {/* Top Tag & Header */}
           <div className="flex flex-col items-center text-center mt-4">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-xs font-bold tracking-wide uppercase mb-3 backdrop-blur-sm">
               <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
@@ -518,7 +411,6 @@ export default function ElderPortal() {
             </h2>
           </div>
 
-          {/* Giant Pulsating LED Countdown Timer */}
           <div className="my-auto flex flex-col items-center justify-center">
             <div className="relative w-44 h-44 rounded-full bg-white/10 border-4 border-white/30 flex items-center justify-center shadow-2xl animate-pulse">
               <span className="font-mono text-7xl font-black text-white tracking-widest">
@@ -530,7 +422,6 @@ export default function ElderPortal() {
             </p>
           </div>
 
-          {/* Medical Card Shared with Paramedics */}
           <div className="bg-red-900/40 backdrop-blur-md border border-white/20 rounded-3xl p-4 max-w-md mx-auto w-full mb-6">
             <div className="text-xs font-semibold text-white/80 uppercase tracking-wider mb-2">
               Medical card shared with paramedics
@@ -547,7 +438,6 @@ export default function ElderPortal() {
             </div>
           </div>
 
-          {/* Action Buttons: "Call right now" & "Cancel, I'm OK" */}
           <div className="flex flex-col gap-3 max-w-md mx-auto w-full">
             <button
               onClick={() => {

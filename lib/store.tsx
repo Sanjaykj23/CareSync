@@ -10,7 +10,10 @@ import {
   Appointment, 
   MedicalBill, 
   CentralAuditLog, 
-  EmergencyAlert 
+  EmergencyAlert,
+  LinkingRequest,
+  AbhaRecord,
+  UserSession
 } from './types';
 import { 
   INITIAL_PATIENT, 
@@ -20,13 +23,28 @@ import {
   INITIAL_APPOINTMENTS, 
   INITIAL_BILLS, 
   INITIAL_AUDIT_LOGS,
-  INITIAL_EMERGENCY_ALERTS
+  INITIAL_EMERGENCY_ALERTS,
+  INITIAL_LINKING_REQUESTS,
+  INITIAL_ABHA_RECORDS
 } from './mock-data';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { setAuthCookie, getAuthCookie, clearAuthCookie } from './auth-cookie';
+
+interface RegisterData {
+  name: string;
+  phone: string;
+  role: CareRole;
+  password: string;
+  age?: number;
+  abhaId?: string;
+  specialty?: string;
+  targetPatientPhone?: string; // If child/doctor/caretaker linking to an elder
+}
 
 interface AppContextType {
   currentRole: CareRole | null;
   currentUser: CareRoleAccess | null;
+  currentPatientId: string;
   patient: PatientProfile;
   roles: CareRoleAccess[];
   medications: Medication[];
@@ -35,12 +53,19 @@ interface AppContextType {
   bills: MedicalBill[];
   auditLogs: CentralAuditLog[];
   emergencyAlerts: EmergencyAlert[];
+  linkingRequests: LinkingRequest[];
+  abhaRecords: AbhaRecord[];
   isVoiceEnabled: boolean;
   
-  // Actions
-  login: (role: CareRole, passcode: string) => boolean;
+  // Auth actions
+  loginWithPhone: (phone: string, password: string) => boolean;
+  loginWithPasscode: (role: CareRole, passcode: string) => boolean;
+  registerUser: (data: RegisterData) => { success: boolean; message: string; requiresOtp?: boolean };
+  verifyOtpAndCompleteRegister: (phone: string, otp: string) => boolean;
   logout: () => void;
   switchRoleQuick: (role: CareRole) => void;
+  
+  // Voice
   speak: (text: string) => void;
   toggleVoice: () => void;
   
@@ -50,12 +75,17 @@ interface AppContextType {
   simulateIotSlotDispense: (slotNumber: number) => Promise<void>;
   simulateMissedDose: (medicationId: string) => Promise<void>;
   
+  // Care Circle & Linking
+  sendLinkingRequest: (elderPhone: string, message?: string) => { success: boolean; message: string };
+  respondToLinkingRequest: (requestId: string, status: 'ACCEPTED' | 'REJECTED') => void;
+  
   // Care & Travel
   toggleTravelMode: (hours?: number) => void;
   addAppointment: (app: Omit<Appointment, 'id' | 'patient_id' | 'created_at'>) => void;
   addMedicalBill: (bill: Omit<MedicalBill, 'id' | 'patient_id' | 'created_at'>) => void;
   updatePrescription: (medId: string, updates: Partial<Medication>) => void;
   acknowledgeEmergency: (alertId: string) => void;
+  toggleAbhaConsent: (recordId: string) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -63,15 +93,32 @@ const AppContext = createContext<AppContextType | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [currentRole, setCurrentRole] = useState<CareRole | null>('ELDER');
   const [currentUser, setCurrentUser] = useState<CareRoleAccess | null>(INITIAL_ROLES[0]);
+  const [currentPatientId, setCurrentPatientId] = useState<string>(INITIAL_PATIENT.id);
   const [patient, setPatient] = useState<PatientProfile>(INITIAL_PATIENT);
-  const [roles] = useState<CareRoleAccess[]>(INITIAL_ROLES);
+  const [roles, setRoles] = useState<CareRoleAccess[]>(INITIAL_ROLES);
   const [medications, setMedications] = useState<Medication[]>(INITIAL_MEDICATIONS);
   const [doseLogs, setDoseLogs] = useState<DoseLog[]>(INITIAL_DOSE_LOGS);
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
   const [bills, setBills] = useState<MedicalBill[]>(INITIAL_BILLS);
   const [auditLogs, setAuditLogs] = useState<CentralAuditLog[]>(INITIAL_AUDIT_LOGS);
   const [emergencyAlerts, setEmergencyAlerts] = useState<EmergencyAlert[]>(INITIAL_EMERGENCY_ALERTS);
+  const [linkingRequests, setLinkingRequests] = useState<LinkingRequest[]>(INITIAL_LINKING_REQUESTS);
+  const [abhaRecords, setAbhaRecords] = useState<AbhaRecord[]>(INITIAL_ABHA_RECORDS);
+  const [pendingRegistrations, setPendingRegistrations] = useState<{ [phone: string]: RegisterData & { otp: string } }>({});
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+
+  // Restore session from cookie on mount
+  useEffect(() => {
+    const session = getAuthCookie();
+    if (session) {
+      const matched = roles.find(r => r.phone === session.phone || r.id === session.user_id);
+      if (matched) {
+        setCurrentRole(matched.role);
+        setCurrentUser(matched);
+        setCurrentPatientId(matched.patient_id);
+      }
+    }
+  }, []);
 
   // Web Speech API Voice Feedback
   const speak = (text: string) => {
@@ -79,11 +126,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.9; // Slightly slower and clear for elderly users
+      utterance.rate = 0.9;
       utterance.pitch = 1.0;
       window.speechSynthesis.speak(utterance);
     } catch {
-      // Speech synthesis unsupported or blocked
+      // Speech unsupported
     }
   };
 
@@ -91,7 +138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setIsVoiceEnabled(prev => !prev);
   };
 
-  // Append to Central Audit Log (Immutable ledger)
+  // Append to Central Audit Log (Strictly scoped to current patient_id)
   const appendAuditLog = (
     actorName: string,
     actorRole: CareRole | 'IOT_DEVICE' | 'SYSTEM',
@@ -102,7 +149,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const newEntry: CentralAuditLog = {
       id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      patient_id: patient.id,
+      patient_id: currentPatientId,
       actor_name: actorName,
       actor_role: actorRole,
       action_type: actionType,
@@ -114,10 +161,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setAuditLogs(prev => [newEntry, ...prev]);
 
-    // Write to Supabase if configured
     if (isSupabaseConfigured && supabase) {
       supabase.from('central_audit_logs').insert([{
-        patient_id: patient.id,
+        patient_id: currentPatientId,
         actor_name: actorName,
         actor_role: actorRole,
         action_type: actionType,
@@ -128,34 +174,232 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Auth: verify passcode
-  const login = (role: CareRole, passcode: string): boolean => {
-    const target = roles.find(r => r.role === role);
-    if (!target) return false;
+  // 1. Phone + Password Authentication
+  const loginWithPhone = (phone: string, password: string): boolean => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const user = roles.find(r => r.phone.replace(/\D/g, '').endsWith(cleanPhone) || r.phone === phone);
+
+    if (!user) {
+      speak('No user found with this phone number. Please register.');
+      return false;
+    }
+
+    if (user.password_hash !== password && password !== 'demo123') {
+      speak('Incorrect password.');
+      return false;
+    }
 
     // Check shift expiry for caretaker
-    if (role === 'CARETAKER' && target.shift_expires_at) {
-      if (new Date(target.shift_expires_at) < new Date()) {
-        speak('Caretaker shift has expired. Please contact family admin.');
+    if (user.role === 'CARETAKER' && user.shift_expires_at) {
+      if (new Date(user.shift_expires_at) < new Date()) {
+        speak('Caretaker shift has expired.');
         return false;
       }
     }
 
+    setCurrentRole(user.role);
+    setCurrentUser(user);
+    setCurrentPatientId(user.patient_id);
+
+    // Save cookie
+    setAuthCookie({
+      user_id: user.id,
+      patient_id: user.patient_id,
+      role: user.role,
+      name: user.name,
+      phone: user.phone,
+    });
+
+    speak(`Welcome back, ${user.name}`);
+    appendAuditLog(
+      user.name,
+      user.role,
+      'USER_LOGIN_PHONE',
+      `User ${user.name} logged in with verified phone credentials.`
+    );
+    return true;
+  };
+
+  // 2. Quick Passcode Login
+  const loginWithPasscode = (role: CareRole, passcode: string): boolean => {
+    const target = roles.find(r => r.role === role);
+    if (!target) return false;
+
     if (target.passcode_hash === passcode || passcode === 'demo') {
       setCurrentRole(role);
       setCurrentUser(target);
-      speak(`Logged in as ${role === 'ELDER' ? patient.name : target.name}`);
-      appendAuditLog(
-        target.name,
-        role,
-        'USER_LOGIN',
-        `User ${target.name} logged into ${role} role portal.`
-      );
+      setCurrentPatientId(target.patient_id);
+
+      setAuthCookie({
+        user_id: target.id,
+        patient_id: target.patient_id,
+        role: target.role,
+        name: target.name,
+        phone: target.phone,
+      });
+
+      speak(`Passcode verified for ${target.name}`);
+      appendAuditLog(target.name, role, 'USER_LOGIN_PASSCODE', `User verified with PIN pad.`);
       return true;
     }
 
-    speak('Incorrect passcode. Please try again.');
+    speak('Incorrect passcode.');
     return false;
+  };
+
+  // 3. User Registration with OTP Simulation
+  const registerUser = (data: RegisterData): { success: boolean; message: string; requiresOtp?: boolean } => {
+    const cleanPhone = data.phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      return { success: false, message: 'Please enter a valid 10-digit phone number.' };
+    }
+
+    // Generate 6-digit OTP (Default 123456 for instant testing)
+    const simulatedOtp = '123456';
+    setPendingRegistrations(prev => ({
+      ...prev,
+      [cleanPhone]: { ...data, phone: cleanPhone, otp: simulatedOtp }
+    }));
+
+    speak(`OTP sent to phone ending in ${cleanPhone.slice(-4)}. Demo OTP is 123456.`);
+    return {
+      success: true,
+      message: `OTP sent successfully to +91 ${cleanPhone}. (Use Demo OTP: 123456)`,
+      requiresOtp: true,
+    };
+  };
+
+  // 4. Verify OTP and finalize registration
+  const verifyOtpAndCompleteRegister = (phone: string, otp: string): boolean => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const pending = pendingRegistrations[cleanPhone];
+
+    if (!pending) {
+      speak('No pending registration found for this phone.');
+      return false;
+    }
+
+    if (otp !== pending.otp && otp !== '123456') {
+      speak('Invalid OTP code. Please enter 123456.');
+      return false;
+    }
+
+    let assignedPatientId = INITIAL_PATIENT.id;
+
+    // If Elder registers, create a new isolated PatientProfile
+    if (pending.role === 'ELDER') {
+      const newElderId = `patient-${Date.now()}`;
+      assignedPatientId = newElderId;
+      const newPatient: PatientProfile = {
+        id: newElderId,
+        name: pending.name,
+        phone: cleanPhone,
+        age: pending.age || 70,
+        abha_id: pending.abhaId || `91-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`,
+        abha_address: `${pending.name.toLowerCase().replace(/\s+/g, '')}@abdm`,
+        emergency_threshold: 2,
+        travel_mode_active: false,
+        travel_mode_until: null,
+        preferred_language: 'en',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      setPatient(newPatient);
+      setCurrentPatientId(newElderId);
+    }
+
+    const newUser: CareRoleAccess = {
+      id: `user-${Date.now()}`,
+      patient_id: assignedPatientId,
+      role: pending.role,
+      name: pending.name,
+      email: `${pending.name.toLowerCase().replace(/\s+/g, '.')}@example.in`,
+      phone: cleanPhone,
+      password_hash: pending.password,
+      passcode_hash: pending.role === 'ELDER' ? '1234' : '654321',
+      shift_expires_at: pending.role === 'CARETAKER' ? new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString() : null,
+      is_verified: true,
+      created_at: new Date().toISOString(),
+    };
+
+    setRoles(prev => [...prev, newUser]);
+    setCurrentRole(newUser.role);
+    setCurrentUser(newUser);
+    setCurrentPatientId(assignedPatientId);
+
+    setAuthCookie({
+      user_id: newUser.id,
+      patient_id: assignedPatientId,
+      role: newUser.role,
+      name: newUser.name,
+      phone: newUser.phone,
+    });
+
+    speak(`Registration successful! Welcome to CareSync, ${newUser.name}.`);
+    appendAuditLog(
+      newUser.name,
+      newUser.role,
+      'USER_REGISTERED',
+      `New user ${newUser.name} created account with role ${newUser.role} via OTP verification.`
+    );
+    return true;
+  };
+
+  // 5. Send Care Circle Linking Request (Doctor/Child/Caretaker -> Elder)
+  const sendLinkingRequest = (elderPhone: string, message?: string): { success: boolean; message: string } => {
+    if (!currentUser) return { success: false, message: 'Please log in to send a request.' };
+
+    const newReq: LinkingRequest = {
+      id: `req-${Date.now()}`,
+      patient_id: patient.id,
+      requester_id: currentUser.id,
+      requester_name: currentUser.name,
+      requester_role: currentUser.role,
+      requester_phone: currentUser.phone,
+      message: message || `Requesting permission to join Care Circle as ${currentUser.role}.`,
+      status: 'PENDING',
+      requested_at: new Date().toISOString(),
+      responded_at: null,
+    };
+
+    setLinkingRequests(prev => [newReq, ...prev]);
+    speak(`Linking request sent to ${elderPhone}. Waiting for Elder approval.`);
+    appendAuditLog(
+      currentUser.name,
+      currentUser.role,
+      'LINKING_REQUEST_SENT',
+      `${currentUser.name} (${currentUser.role}) sent access request to Elder.`
+    );
+    return { success: true, message: 'Linking request successfully submitted to Elder.' };
+  };
+
+  // 6. Elder Responds to Linking Request (Accept / Reject)
+  const respondToLinkingRequest = (requestId: string, status: 'ACCEPTED' | 'REJECTED') => {
+    setLinkingRequests(prev => prev.map(req => {
+      if (req.id === requestId) {
+        return {
+          ...req,
+          status,
+          responded_at: new Date().toISOString(),
+        };
+      }
+      return req;
+    }));
+
+    const targetReq = linkingRequests.find(r => r.id === requestId);
+    const actionDesc = status === 'ACCEPTED' 
+      ? `Elder ${patient.name} ACCEPTED ${targetReq?.requester_name} (${targetReq?.requester_role}) into Care Circle.`
+      : `Elder ${patient.name} DECLINED access request from ${targetReq?.requester_name}.`;
+
+    speak(status === 'ACCEPTED' ? `${targetReq?.requester_name} added to your Care Circle.` : `Request declined.`);
+    appendAuditLog(
+      patient.name,
+      'ELDER',
+      status === 'ACCEPTED' ? 'LINKING_REQUEST_ACCEPTED' : 'LINKING_REQUEST_REJECTED',
+      actionDesc,
+      { status: 'PENDING' },
+      { status }
+    );
   };
 
   // Quick switch for judges during hackathon demo
@@ -164,27 +408,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (target) {
       setCurrentRole(role);
       setCurrentUser(target);
+      setCurrentPatientId(target.patient_id);
+      setAuthCookie({
+        user_id: target.id,
+        patient_id: target.patient_id,
+        role: target.role,
+        name: target.name,
+        phone: target.phone,
+      });
       speak(`Switched view to ${role === 'ELDER' ? 'Sundaram ji' : target.name}`);
-      appendAuditLog(
-        target.name,
-        role,
-        'ROLE_SWITCH_DEMO',
-        `Judge switched view to ${role} (${target.name}).`
-      );
+      appendAuditLog(target.name, role, 'ROLE_SWITCH_DEMO', `Judge switched view to ${role} (${target.name}).`);
     }
   };
 
   const logout = () => {
     if (currentUser) {
-      appendAuditLog(
-        currentUser.name,
-        currentUser.role,
-        'USER_LOGOUT',
-        `User ${currentUser.name} signed out.`
-      );
+      appendAuditLog(currentUser.name, currentUser.role, 'USER_LOGOUT', `User ${currentUser.name} signed out.`);
     }
+    clearAuthCookie();
     setCurrentRole(null);
     setCurrentUser(null);
+    speak('Logged out.');
   };
 
   // Mark dose as taken
@@ -213,7 +457,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return d;
     }));
 
-    // Decrement pill count and reset consecutive misses
     if (med) {
       setMedications(prev => prev.map(m => {
         if (m.id === med.id) {
@@ -229,7 +472,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     speak(`Medicine taken! Great job Sundaram ji.`);
 
-    const actor = currentUser ? currentUser.name : 'Sundaram Iyer';
+    const actor = currentUser ? currentUser.name : patient.name;
     const role = currentRole || 'ELDER';
 
     appendAuditLog(
@@ -247,7 +490,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const med = medications.find(m => m.id === dose?.medication_id);
     speak(`Reminder snoozed for 15 minutes.`);
     appendAuditLog(
-      currentUser?.name || 'Sundaram Iyer',
+      currentUser?.name || patient.name,
       currentRole || 'ELDER',
       'DOSE_SNOOZED',
       `Dose for ${med?.name || 'Medication'} snoozed for 15 minutes.`
@@ -259,16 +502,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const med = medications.find(m => m.iot_slot_number === slotNumber);
     if (!med) return;
 
-    // Find first scheduled dose for this medication today
     const scheduledDose = doseLogs.find(d => d.medication_id === med.id && d.status === 'SCHEDULED');
     
     if (scheduledDose) {
       await takeDose(scheduledDose.id, 'IOT_BOX');
     } else {
-      // Create new verified log
       const newDose: DoseLog = {
         id: `dose-iot-${Date.now()}`,
-        patient_id: patient.id,
+        patient_id: currentPatientId,
         medication_id: med.id,
         scheduled_at: new Date().toISOString(),
         status: 'SENSOR_VERIFIED',
@@ -289,7 +530,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Simulate Missed Dose (Judge Demo Trigger)
+  // Simulate Missed Dose
   const simulateMissedDose = async (medicationId: string) => {
     const med = medications.find(m => m.id === medicationId);
     if (!med) return;
@@ -303,7 +544,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return m;
     }));
 
-    // Find and mark dose as MISSED
     const targetDose = doseLogs.find(d => d.medication_id === medicationId && d.status === 'SCHEDULED');
     if (targetDose) {
       setDoseLogs(prev => prev.map(d => d.id === targetDose.id ? { ...d, status: 'MISSED' } : d));
@@ -318,12 +558,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       { consecutive_misses: newMissCount }
     );
 
-    // If threshold breached and travel mode inactive, dispatch emergency alert
     if (newMissCount >= patient.emergency_threshold && !patient.travel_mode_active) {
       const alertMsg = `CODE-RED: ${patient.name} has missed ${newMissCount} consecutive doses of ${med.name}! Escalation email sent to Karthik (Child) & Dr. Priya Nair.`;
       const newAlert: EmergencyAlert = {
         id: `alert-${Date.now()}`,
-        patient_id: patient.id,
+        patient_id: currentPatientId,
         medication_id: med.id,
         medication_name: med.name,
         consecutive_misses: newMissCount,
@@ -345,7 +584,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Travel Mode with auto-expiry
+  // Travel Mode
   const toggleTravelMode = (hours: number = 6) => {
     const nextState = !patient.travel_mode_active;
     const expiry = nextState ? new Date(Date.now() + hours * 60 * 60 * 1000).toISOString() : null;
@@ -362,7 +601,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     speak(msg);
     appendAuditLog(
-      currentUser?.name || 'Sundaram Iyer',
+      currentUser?.name || patient.name,
       currentRole || 'ELDER',
       'TRAVEL_MODE_TOGGLE',
       msg,
@@ -371,12 +610,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  // Add Appointment
   const addAppointment = (app: Omit<Appointment, 'id' | 'patient_id' | 'created_at'>) => {
     const newApp: Appointment = {
       ...app,
       id: `appt-${Date.now()}`,
-      patient_id: patient.id,
+      patient_id: currentPatientId,
       created_at: new Date().toISOString(),
     };
     setAppointments(prev => [newApp, ...prev]);
@@ -391,12 +629,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     speak(`Doctor appointment with ${app.doctor_name} scheduled.`);
   };
 
-  // Add Medical Bill
   const addMedicalBill = (bill: Omit<MedicalBill, 'id' | 'patient_id' | 'created_at'>) => {
     const newBill: MedicalBill = {
       ...bill,
       id: `bill-${Date.now()}`,
-      patient_id: patient.id,
+      patient_id: currentPatientId,
       created_at: new Date().toISOString(),
     };
     setBills(prev => [newBill, ...prev]);
@@ -410,7 +647,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  // Update Doctor Prescription
   const updatePrescription = (medId: string, updates: Partial<Medication>) => {
     const oldMed = medications.find(m => m.id === medId);
     setMedications(prev => prev.map(m => m.id === medId ? { ...m, ...updates, updated_at: new Date().toISOString() } : m));
@@ -435,11 +671,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const toggleAbhaConsent = (recordId: string) => {
+    setAbhaRecords(prev => prev.map(r => r.id === recordId ? { ...r, consent_granted: !r.consent_granted } : r));
+    const target = abhaRecords.find(r => r.id === recordId);
+    const newConsent = !target?.consent_granted;
+    speak(newConsent ? 'Consent granted for record' : 'Consent revoked for record');
+    appendAuditLog(
+      patient.name,
+      'ELDER',
+      'ABDM_CONSENT_TOGGLE',
+      `ABDM Health Record "${target?.record_type}" consent ${newConsent ? 'GRANTED' : 'REVOKED'}.`,
+      { consent: target?.consent_granted },
+      { consent: newConsent }
+    );
+  };
+
   return (
     <AppContext.Provider
       value={{
         currentRole,
         currentUser,
+        currentPatientId,
         patient,
         roles,
         medications,
@@ -448,8 +700,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         bills,
         auditLogs,
         emergencyAlerts,
+        linkingRequests,
+        abhaRecords,
         isVoiceEnabled,
-        login,
+        loginWithPhone,
+        loginWithPasscode,
+        registerUser,
+        verifyOtpAndCompleteRegister,
         logout,
         switchRoleQuick,
         speak,
@@ -458,11 +715,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         snoozeDose,
         simulateIotSlotDispense,
         simulateMissedDose,
+        sendLinkingRequest,
+        respondToLinkingRequest,
         toggleTravelMode,
         addAppointment,
         addMedicalBill,
         updatePrescription,
         acknowledgeEmergency,
+        toggleAbhaConsent,
       }}
     >
       {children}

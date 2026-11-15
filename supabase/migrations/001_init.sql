@@ -125,7 +125,21 @@ CREATE TABLE IF NOT EXISTS emergency_alerts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 9. Centralized Audit Log (Append-Only Ledger)
+-- 9. Care Linking Requests (LinkedIn-style Elder Consent Gateway)
+CREATE TABLE IF NOT EXISTS care_linking_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    patient_id UUID NOT NULL REFERENCES patient_profiles(id) ON DELETE CASCADE,
+    requester_id UUID NOT NULL REFERENCES care_role_access(id) ON DELETE CASCADE,
+    requester_name TEXT NOT NULL,
+    requester_role care_role NOT NULL,
+    requester_phone TEXT NOT NULL,
+    message TEXT,
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'ACCEPTED', 'REJECTED')),
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    responded_at TIMESTAMPTZ
+);
+
+-- 10. Centralized Audit Log (Append-Only Ledger)
 CREATE TABLE IF NOT EXISTS central_audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_id UUID NOT NULL REFERENCES patient_profiles(id) ON DELETE CASCADE,

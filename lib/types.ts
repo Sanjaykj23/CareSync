@@ -17,8 +17,10 @@ export type Language = 'en' | 'ta' | 'hi';
 export interface PatientProfile {
   id: string;
   name: string;
+  phone: string;
   age: number;
   abha_id: string;
+  abha_address?: string; // e.g. sundaram@abdm
   emergency_threshold: number;
   travel_mode_active: boolean;
   travel_mode_until: string | null;
@@ -29,14 +31,30 @@ export interface PatientProfile {
 
 export interface CareRoleAccess {
   id: string;
-  patient_id: string;
+  patient_id: string; // The elder they are linked to
   role: CareRole;
   name: string;
   email: string | null;
-  phone: string | null;
-  passcode_hash: string;
+  phone: string;
+  password_hash: string;
+  passcode_hash: string; // Quick PIN/passcode
   shift_expires_at: string | null;
+  is_verified: boolean;
   created_at: string;
+}
+
+export interface LinkingRequest {
+  id: string;
+  patient_id: string;
+  requester_id: string;
+  requester_name: string;
+  requester_role: CareRole;
+  requester_phone: string;
+  requester_specialty?: string;
+  message?: string;
+  status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+  requested_at: string;
+  responded_at?: string | null;
 }
 
 export interface Medication {
@@ -113,4 +131,22 @@ export interface EmergencyAlert {
   resolved_at?: string | null;
   created_at: string;
   medication_name?: string;
+}
+
+export interface UserSession {
+  user_id: string;
+  patient_id: string;
+  role: CareRole;
+  name: string;
+  phone: string;
+}
+
+export interface AbhaRecord {
+  id: string;
+  record_type: 'Prescription' | 'Diagnostic Report' | 'Discharge Summary' | 'OPD Consultation';
+  doctor_name: string;
+  facility: string;
+  date: string;
+  document_url: string;
+  consent_granted: boolean;
 }

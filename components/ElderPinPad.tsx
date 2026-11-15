@@ -9,7 +9,7 @@ interface ElderPinPadProps {
 }
 
 export default function ElderPinPad({ onSuccess }: ElderPinPadProps) {
-  const { login, speak } = useApp();
+  const { loginWithPasscode, speak } = useApp();
   const [pin, setPin] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -36,7 +36,7 @@ export default function ElderPinPad({ onSuccess }: ElderPinPadProps) {
   };
 
   const verifyPin = (submittedPin: string) => {
-    const success = login('ELDER', submittedPin);
+    const success = loginWithPasscode('ELDER', submittedPin);
     if (success) {
       setPin('');
       setErrorMsg(null);
@@ -51,7 +51,7 @@ export default function ElderPinPad({ onSuccess }: ElderPinPadProps) {
     setPin('1234');
     speak('One, two, three, four. Demo PIN loaded.');
     setTimeout(() => {
-      login('ELDER', '1234');
+      loginWithPasscode('ELDER', '1234');
       if (onSuccess) onSuccess();
     }, 400);
   };
