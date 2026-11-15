@@ -265,6 +265,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // 1. If Supabase is configured with Google Provider, trigger official OAuth redirect
     const client = supabase;
     if (isSupabaseConfigured && client) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('caresync_oauth_role', role);
+      }
       speak('Redirecting to Google Sign-In...');
       const { error } = await client.auth.signInWithOAuth({
         provider: 'google',
@@ -887,6 +890,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       appendAuditLog(currentUser.name, currentUser.role, 'USER_LOGOUT', `User ${currentUser.name} signed out.`);
     }
     clearAuthCookie();
+    if (typeof window !== 'undefined') {
+      fetch('/api/auth/set-session', { method: 'DELETE' }).catch(() => {});
+    }
     setCurrentRole(null);
     setCurrentUser(null);
     const client = supabase;

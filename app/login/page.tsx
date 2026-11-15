@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/lib/store';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { getAuthCookie } from '@/lib/auth-cookie';
 import Link from 'next/link';
 import { CareRole } from '@/lib/types';
 import { 
@@ -25,6 +27,32 @@ function LoginForm() {
 
   // Target role selection
   const [selectedRole, setSelectedRole] = useState<CareRole>('ELDER');
+
+  // Auto-detect incoming OAuth hash or existing authenticated session
+  useEffect(() => {
+    // 1. If URL has OAuth hash (#access_token=...), forward immediately to /auth/callback
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      router.replace('/auth/callback' + window.location.search + window.location.hash);
+      return;
+    }
+
+    // 2. If cookie session already exists, redirect to dashboard
+    const existingSession = getAuthCookie();
+    if (existingSession && existingSession.role) {
+      const dest = redirectTarget || `/dashboard/${existingSession.role.toLowerCase()}`;
+      router.replace(dest);
+      return;
+    }
+
+    // 3. Check if Supabase client already has an active session from Google OAuth
+    if (isSupabaseConfigured && supabase) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session?.user) {
+          router.replace('/auth/callback');
+        }
+      });
+    }
+  }, [router, redirectTarget]);
 
   // Elder Auth state (OTP Phone or Google)
   const [elderPhone, setElderPhone] = useState('9840123456');
