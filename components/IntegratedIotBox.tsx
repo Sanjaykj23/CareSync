@@ -2,111 +2,98 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/lib/store';
-import { Cpu, Radio, ShieldCheck, Check, Volume2 } from 'lucide-react';
+import { Cpu, Radio, ShieldCheck, Check, Volume2, CircleDot } from 'lucide-react';
 
 export default function IntegratedIotBox() {
   const { medications, doseLogs, simulateIotSlotDispense, speak } = useApp();
   const [openSlots, setOpenSlots] = useState<{ [key: number]: boolean }>({});
-  const [animatingSlot, setAnimatingSlot] = useState<number | null>(null);
 
   const handleDispense = async (slotNumber: number) => {
-    setAnimatingSlot(slotNumber);
     const isNowOpen = !openSlots[slotNumber];
     setOpenSlots(prev => ({ ...prev, [slotNumber]: isNowOpen }));
 
     if (isNowOpen) {
-      speak(`Smart Pillbox Slot ${slotNumber} opened. Pill taken.`);
+      speak(`Smart Dispenser: Slot ${slotNumber} opened. Pill lifted.`);
       await simulateIotSlotDispense(slotNumber);
     } else {
       speak(`Slot ${slotNumber} lid closed.`);
     }
-
-    setTimeout(() => {
-      setAnimatingSlot(null);
-    }, 800);
   };
 
   return (
-    <div className="bg-slate-900 text-white rounded-4xl p-6 sm:p-7 shadow-float border border-slate-800 relative overflow-hidden">
-      {/* Background subtle neon glow */}
-      <div className="absolute -top-12 -right-12 w-48 h-48 bg-blue-600/15 rounded-full blur-3xl pointer-events-none"></div>
-
-      {/* Header with live hardware status */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+    <div className="bg-[#0F141C] text-slate-100 rounded-3xl p-5 sm:p-6 border border-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
+      {/* Hardware Panel Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-slate-800/90">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-md shadow-cyan-500/20">
-            <Cpu className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
+            <Cpu className="w-5 h-5 text-blue-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-lg font-black tracking-tight text-white">
-                ESP32 Smart Dispenser Box
+              <h3 className="text-base font-extrabold text-white tracking-tight">
+                ESP32 Smart Dispenser Telemetry
               </h3>
-              <span className="flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                ONLINE
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                ACTIVE
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              Live hardware telemetry · 4 Active sensor compartments
+              4 Physical compartments with reed switches & load cell verification
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/60 px-3 py-1 rounded-full flex items-center gap-1.5">
-            <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
-            Auto-Sync Active
+          <span className="text-[11px] font-mono text-slate-300 bg-slate-900 border border-slate-700/80 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+            <Radio className="w-3 h-3 text-blue-400" />
+            <span>POST /api/iot/telemetry</span>
           </span>
         </div>
       </div>
 
-      {/* 4 Physical Compartment Slots */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+      {/* 4 Hardware Compartments */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3.5">
         {[1, 2, 3, 4].map((slotNum) => {
           const med = medications.find(m => m.iot_slot_number === slotNum);
           const dose = doseLogs.find(d => d.medication_id === med?.id);
           const isVerified = dose && (dose.status === 'SENSOR_VERIFIED' || dose.status === 'DUAL_VERIFIED');
           const isLidOpen = openSlots[slotNum];
-          const isAnimating = animatingSlot === slotNum;
-
-          // LED status color logic
-          let ledColor = 'bg-amber-400 shadow-[0_0_10px_#fbbf24]';
-          let statusText = 'READY';
-
-          if (isVerified) {
-            ledColor = 'bg-emerald-400 shadow-[0_0_12px_#34d399]';
-            statusText = 'TAKEN';
-          } else if (isLidOpen) {
-            ledColor = 'bg-cyan-400 shadow-[0_0_12px_#22d3ee] animate-pulse';
-            statusText = 'LIFTED';
-          }
 
           return (
             <div
               key={slotNum}
-              className={`p-4 rounded-3xl border transition-all flex flex-col justify-between ${
+              className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between ${
                 isLidOpen
-                  ? 'bg-slate-800/90 border-cyan-400/80 shadow-lg shadow-cyan-500/20'
-                  : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                  ? 'bg-[#18202C] border-blue-500/80 shadow-md shadow-blue-500/10'
+                  : 'bg-[#141A23] border-slate-800 hover:border-slate-700'
               }`}
             >
-              {/* Slot Header & RGB LED */}
+              {/* Slot Header with LED Indicator Diode */}
               <div className="flex items-center justify-between mb-2">
                 <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                  SLOT {slotNum}
+                  SLOT 0{slotNum}
                 </span>
+
                 <div className="flex items-center gap-1.5">
-                  <span className={`w-3 h-3 rounded-full transition-all duration-300 ${ledColor}`} />
-                  <span className="text-[9px] font-mono font-bold text-slate-300 uppercase">
-                    {statusText}
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      isVerified
+                        ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
+                        : isLidOpen
+                        ? 'bg-blue-400 shadow-[0_0_8px_#60a5fa]'
+                        : 'bg-amber-400 shadow-[0_0_6px_#fbbf24]'
+                    }`}
+                  />
+                  <span className="text-[9px] font-mono font-bold text-slate-400 uppercase">
+                    {isVerified ? 'VERIFIED' : isLidOpen ? 'OPEN' : 'READY'}
                   </span>
                 </div>
               </div>
 
-              {/* Medication Name & Time */}
+              {/* Medication Details */}
               <div className="my-2">
-                <div className="font-extrabold text-white text-sm tracking-tight truncate">
+                <div className="font-bold text-white text-sm truncate">
                   {med?.name || `Slot ${slotNum}`}
                 </div>
                 <div className="text-[11px] text-slate-400 font-medium">
@@ -114,31 +101,31 @@ export default function IntegratedIotBox() {
                 </div>
               </div>
 
-              {/* Sensor stats */}
-              <div className="text-[10px] font-mono text-slate-400 my-1 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800/60">
+              {/* Physical Sensor Readout */}
+              <div className="text-[10px] font-mono text-slate-400 my-1 bg-[#0B0F15] p-2 rounded-xl border border-slate-800/80 space-y-0.5">
                 <div className="flex justify-between">
-                  <span>Weight:</span>
+                  <span>Load Cell:</span>
                   <span className={isVerified ? 'text-emerald-400 font-bold' : 'text-slate-300'}>
                     {isVerified ? '0.0g' : '2.4g'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Lid:</span>
-                  <span className={isLidOpen ? 'text-cyan-400 font-bold' : 'text-slate-400'}>
-                    {isLidOpen ? 'OPEN' : 'CLOSED'}
+                  <span>Reed Switch:</span>
+                  <span className={isLidOpen ? 'text-blue-400 font-bold' : 'text-slate-400'}>
+                    {isLidOpen ? 'LOW (Open)' : 'HIGH (Closed)'}
                   </span>
                 </div>
               </div>
 
-              {/* Interactive Tactile Trigger */}
+              {/* Clean Hardware Button (Not AI-Looking!) */}
               <button
                 onClick={() => handleDispense(slotNum)}
-                className={`mt-2 py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+                className={`mt-2 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-98 ${
                   isVerified
-                    ? 'bg-emerald-950/60 border border-emerald-800 text-emerald-300 cursor-default'
+                    ? 'bg-emerald-950/70 border border-emerald-800/80 text-emerald-400 cursor-default'
                     : isLidOpen
-                    ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-sm'
-                    : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 active:scale-95'
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
+                    : 'bg-[#1C2533] hover:bg-[#242F40] text-slate-200 border border-slate-700/80'
                 }`}
               >
                 {isVerified ? (
@@ -146,7 +133,7 @@ export default function IntegratedIotBox() {
                     <Check className="w-3.5 h-3.5" /> Taken
                   </>
                 ) : (
-                  <span>{isLidOpen ? 'Close Lid' : 'Open & Lift'}</span>
+                  <span>{isLidOpen ? 'Close Compartment' : 'Open & Lift Pill'}</span>
                 )}
               </button>
             </div>
@@ -154,16 +141,17 @@ export default function IntegratedIotBox() {
         })}
       </div>
 
+      {/* Footer Info */}
       <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
         <span className="flex items-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          Hardware events automatically update this website and sync to Family Portal.
+          Hardware triggers write to Supabase and immediately notify Family Circle.
         </span>
         <button
-          onClick={() => speak('Smart dispenser is connected. Slot 1 holds Amlodipine, Slot 2 Metformin, Slot 3 Atorvastatin, Slot 4 Vitamin D3.')}
-          className="text-cyan-400 hover:underline flex items-center gap-1"
+          onClick={() => speak('Smart dispenser connected. Slot 1 Amlodipine, Slot 2 Metformin, Slot 3 Atorvastatin, Slot 4 Vitamin D3.')}
+          className="text-blue-400 hover:underline flex items-center gap-1 font-semibold"
         >
-          <Volume2 className="w-3 h-3" /> Voice Guide
+          <Volume2 className="w-3.5 h-3.5" /> Audio Guide
         </button>
       </div>
     </div>

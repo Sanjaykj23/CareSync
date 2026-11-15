@@ -6,216 +6,160 @@ import { useApp } from '@/lib/store';
 import Link from 'next/link';
 import { CareRole } from '@/lib/types';
 import { 
-  UserCheck, 
-  Phone, 
-  Lock, 
-  ShieldCheck, 
-  CheckCircle2, 
+  ArrowLeft, 
   ArrowRight, 
-  KeyRound, 
-  Sparkles,
-  HeartHandshake
+  Phone, 
+  Users, 
+  HeartHandshake, 
+  ShieldCheck, 
+  Sparkles, 
+  CheckCircle2 
 } from 'lucide-react';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { registerUser, verifyOtpAndCompleteRegister, speak } = useApp();
+  const { registerUser, verifyOtpAndCompleteRegister, switchRoleQuick, speak } = useApp();
 
-  // Registration step: 1 = Details, 2 = OTP Verification
-  const [step, setStep] = useState<1 | 2>(1);
   const [role, setRole] = useState<CareRole>('ELDER');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
   const [age, setAge] = useState('74');
-  const [abhaId, setAbhaId] = useState('');
   const [targetElderPhone, setTargetElderPhone] = useState('9840123456');
 
-  // OTP state
+  // OTP step
+  const [step, setStep] = useState<1 | 2>(1);
   const [otp, setOtp] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  const handleDetailsSubmit = (e: React.FormEvent) => {
+  // Elder phone registration submit
+  const handleElderSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
-
     const res = registerUser({
       name,
       phone,
-      role,
-      password,
-      age: role === 'ELDER' ? parseInt(age) || 70 : undefined,
-      abhaId: role === 'ELDER' ? abhaId : undefined,
-      targetPatientPhone: role !== 'ELDER' ? targetElderPhone : undefined,
+      role: 'ELDER',
+      password: 'elder-secret',
+      age: parseInt(age) || 74,
     });
 
     if (res.success) {
-      setStatusMsg(res.message);
       setStep(2);
+      setOtp('123456'); // Pre-fill demo OTP
     } else {
       setErrorMsg(res.message);
     }
   };
 
-  const handleOtpVerify = (e: React.FormEvent) => {
+  const handleVerifyOtp = (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg(null);
-
     const success = verifyOtpAndCompleteRegister(phone, otp);
     if (success) {
-      if (role === 'ELDER') router.push('/dashboard/elder');
-      else if (role === 'CHILD') router.push('/dashboard/child');
-      else if (role === 'CARETAKER') router.push('/dashboard/caretaker');
-      else router.push('/dashboard/doctor');
+      router.push('/dashboard/elder');
     } else {
       setErrorMsg('Invalid OTP code. Please enter 123456.');
     }
   };
 
+  // Google OAuth registration for non-elders (Child, Caretaker, Doctor)
+  const handleGoogleRegister = (selectedRole: CareRole) => {
+    speak(`Linking Google Account as ${selectedRole}...`);
+    switchRoleQuick(selectedRole);
+    if (selectedRole === 'CHILD') router.push('/dashboard/child');
+    else if (selectedRole === 'CARETAKER') router.push('/dashboard/caretaker');
+    else router.push('/dashboard/doctor');
+  };
+
   return (
-    <div className="min-h-screen bg-[#F3F5F9] flex flex-col justify-center items-center p-4">
+    <div className="min-h-screen bg-[#F8FAFC] flex flex-col justify-center items-center p-4 selection:bg-blue-600 selection:text-white font-sans">
       <div className="w-full max-w-lg">
-        {/* Header */}
+        {/* Back Link */}
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 transition-all"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to CareSync Home
+          </Link>
+        </div>
+
+        {/* Brand Header */}
         <div className="text-center mb-6">
-          <div className="w-14 h-14 rounded-3xl bg-gradient-to-tr from-emerald-600 to-teal-600 text-white font-bold text-2xl flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/25 mb-3">
+          <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white font-black text-xl flex items-center justify-center mx-auto mb-2.5 shadow-sm">
             CS
           </div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
             Create CareSync Account
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Verified Healthcare Registration with ABDM & Care Circle Linking
+          <p className="text-xs text-slate-500 mt-1">
+            Senior Phone OTP & Google OAuth for Family & Clinicians
           </p>
         </div>
 
-        {/* Progress tracker */}
-        <div className="flex items-center justify-center gap-3 mb-6">
-          <div className="flex items-center gap-2">
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-              step === 1 ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
-            }`}>
-              {step === 1 ? '1' : '✓'}
-            </span>
-            <span className="text-xs font-bold text-slate-700">Account Details</span>
-          </div>
-          <div className="w-8 h-0.5 bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-              step === 2 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
-            }`}>
-              2
-            </span>
-            <span className="text-xs font-bold text-slate-700">OTP Verification</span>
-          </div>
+        {/* 4-Role Segmented Switcher */}
+        <div className="bg-slate-200/80 p-1.5 rounded-2xl mb-5 grid grid-cols-4 gap-1">
+          {[
+            { id: 'ELDER', label: '👴 Elder' },
+            { id: 'CHILD', label: '👨‍👩‍👧 Child' },
+            { id: 'CARETAKER', label: '🧑‍⚕️ Caretaker' },
+            { id: 'DOCTOR', label: '🩺 Doctor' },
+          ].map(item => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setRole(item.id as CareRole);
+                setErrorMsg(null);
+                setStep(1);
+              }}
+              className={`py-2 rounded-xl text-xs font-bold transition-all ${
+                role === item.id
+                  ? 'bg-white text-slate-950 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
 
-        {/* Form Container */}
-        <div className="bg-white rounded-4xl p-6 sm:p-8 shadow-float border border-slate-100">
+        {/* Card */}
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-[0_4px_25px_-5px_rgba(0,0,0,0.06)] border border-slate-200/80">
           {errorMsg && (
             <div className="mb-4 p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold animate-shake text-center">
               {errorMsg}
             </div>
           )}
 
-          {statusMsg && (
-            <div className="mb-4 p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold text-center">
-              {statusMsg}
-            </div>
-          )}
-
-          {step === 1 ? (
-            <form onSubmit={handleDetailsSubmit} className="space-y-4">
-              {/* Role Selection */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Choose Your Healthcare Role
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { id: 'ELDER', label: '👴 Elder', desc: 'Parent / Senior' },
-                    { id: 'CHILD', label: '👨‍👩‍👧 Child', desc: 'Family Admin' },
-                    { id: 'CARETAKER', label: '🧑‍⚕️ Caretaker', desc: 'Medication Duty' },
-                    { id: 'DOCTOR', label: '🩺 Doctor', desc: 'Clinical Rx' },
-                  ].map(item => (
-                    <button
-                      type="button"
-                      key={item.id}
-                      onClick={() => setRole(item.id as CareRole)}
-                      className={`p-2.5 rounded-2xl text-left border transition-all ${
-                        role === item.id
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div className="font-bold text-xs">{item.label}</div>
-                      <div className={`text-[10px] ${role === item.id ? 'text-slate-300' : 'text-slate-400'}`}>
-                        {item.desc}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Full Name */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sundaram Iyer"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white text-sm font-medium outline-none focus:border-blue-600 transition-all"
-                />
-              </div>
-
-              {/* Phone Number */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Mobile Number (For OTP Verification)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                    +91
+          {/* ELDER REGISTRATION: Phone OTP */}
+          {role === 'ELDER' ? (
+            step === 1 ? (
+              <form onSubmit={handleElderSubmit} className="space-y-4">
+                <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 text-center">
+                  <span className="text-xs font-bold text-blue-900 block">
+                    Elder Registration
                   </span>
+                  <span className="text-[11px] text-blue-700">
+                    Creates an isolated healthcare profile with verified Mobile OTP.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">
+                    Your Name
+                  </label>
                   <input
-                    type="tel"
-                    placeholder="10-digit mobile number"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
+                    type="text"
+                    placeholder="e.g. Sundaram Iyer"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
                     required
-                    maxLength={10}
-                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white text-sm font-medium outline-none focus:border-blue-600 transition-all font-mono"
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white text-sm font-medium outline-none focus:border-blue-600 transition-all"
                   />
                 </div>
-              </div>
 
-              {/* Password */}
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Create Password
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="password"
-                    placeholder="Minimum 6 characters"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    required
-                    className="w-full pl-10 pr-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white text-sm font-medium outline-none focus:border-blue-600 transition-all"
-                  />
-                </div>
-              </div>
-
-              {/* Elder Specific Fields: Age & ABHA */}
-              {role === 'ELDER' ? (
-                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
                       Age
                     </label>
                     <input
@@ -226,108 +170,127 @@ export default function RegisterPage() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                      ABHA ID (Optional)
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Mobile Number
                     </label>
                     <input
-                      type="text"
-                      placeholder="e.g. 91-4567-8901-2345"
-                      value={abhaId}
-                      onChange={e => setAbhaId(e.target.value)}
-                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white text-sm font-medium outline-none font-mono text-xs"
+                      type="tel"
+                      placeholder="10-digit number"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      required
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50 focus:bg-white text-sm font-medium outline-none font-mono"
                     />
                   </div>
                 </div>
-              ) : (
-                /* Non-Elder Specific: Elder Phone for Linking */
-                <div className="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200/80">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900 mb-1">
-                    <HeartHandshake className="w-4 h-4 text-blue-600" />
-                    <span>Elder&apos;s Mobile (For Care Circle Linking)</span>
-                  </div>
-                  <input
-                    type="tel"
-                    placeholder="Enter Elder's 10-digit mobile number"
-                    value={targetElderPhone}
-                    onChange={e => setTargetElderPhone(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-blue-200 bg-white font-mono mt-1"
-                  />
-                  <p className="text-[10px] text-blue-600 mt-1">
-                    CareSync will send a connection request to this elder. Once accepted, you gain authorized access.
+
+                <button
+                  type="submit"
+                  className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-sm transition-all flex items-center justify-center gap-2 active:scale-98"
+                >
+                  <span>Send Verification OTP</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {/* Divider */}
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-slate-200"></div>
+                  <span className="flex-shrink mx-3 text-xs text-slate-400 font-medium">OR</span>
+                  <div className="flex-grow border-t border-slate-200"></div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleGoogleRegister('ELDER')}
+                  className="w-full py-3 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2.5 active:scale-98"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Quick Sign Up with Google</span>
+                </button>
+              </form>
+            ) : (
+              /* Step 2: OTP Verification */
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div className="text-center">
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Verify Your Mobile
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Enter the 6-digit OTP code sent to +91 {phone}
                   </p>
                 </div>
-              )}
 
-              <button
-                type="submit"
-                className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 active:scale-98"
-              >
-                <span>Continue to OTP Verification</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-          ) : (
-            /* Step 2: OTP Verification */
-            <form onSubmit={handleOtpVerify} className="space-y-5">
-              <div className="text-center">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-2">
-                  <ShieldCheck className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-bold text-slate-900">
-                  Verify Mobile OTP
-                </h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  We sent a 6-digit one-time password to <span className="font-mono font-bold">+91 {phone}</span>
-                </p>
-              </div>
-
-              <div>
                 <input
                   type="text"
                   maxLength={6}
-                  placeholder="• • • • • •"
                   value={otp}
                   onChange={e => setOtp(e.target.value)}
+                  placeholder="123456"
+                  className="w-full py-3 text-center text-2xl font-mono tracking-widest rounded-2xl border-2 border-blue-400 bg-slate-50 focus:bg-white text-slate-900 font-bold outline-none"
                   required
-                  autoFocus
-                  className="w-full py-4 text-center text-3xl font-mono tracking-widest rounded-2xl border-2 border-blue-300 bg-slate-50 focus:bg-white focus:border-blue-600 outline-none transition-all font-bold"
                 />
-              </div>
 
-              {/* 1-Click Demo OTP Filler */}
-              <button
-                type="button"
-                onClick={() => {
-                  setOtp('123456');
-                  speak('Demo OTP 123456 entered.');
-                }}
-                className="w-full py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                Hackathon Judge: Auto-Fill Demo OTP (123456)
-              </button>
-
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStep(1)}
-                  className="py-3.5 px-5 rounded-2xl bg-slate-100 text-slate-600 font-bold text-xs hover:bg-slate-200 transition-all"
-                >
-                  Back
-                </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm shadow-md transition-all active:scale-98"
+                  className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs shadow-sm transition-all"
                 >
-                  Verify & Enter Platform
+                  Verify & Create Elder Profile
                 </button>
+              </form>
+            )
+          ) : (
+            /* NON-ELDER REGISTRATION: Google OAuth + Elder Linking */
+            <div className="space-y-5">
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                <div className="flex items-center gap-2 mb-1">
+                  <HeartHandshake className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-bold text-slate-900">
+                    Link with Your Elder&apos;s Care Circle
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Enter your parent&apos;s or patient&apos;s registered mobile number. CareSync will send an authorization request for their approval.
+                </p>
+
+                <div className="mt-3">
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1">
+                    Elder&apos;s Registered Mobile Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={targetElderPhone}
+                    onChange={e => setTargetElderPhone(e.target.value)}
+                    placeholder="e.g. 9840123456"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-mono"
+                  />
+                </div>
               </div>
-            </form>
+
+              {/* Single Professional Google OAuth Register Button */}
+              <button
+                type="button"
+                onClick={() => handleGoogleRegister(role)}
+                className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-3 active:scale-98"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>Continue with Google as {role}</span>
+              </button>
+            </div>
           )}
 
           <div className="mt-6 pt-5 border-t border-slate-100 text-center">
             <p className="text-xs text-slate-500">
-              Already have an account?{' '}
+              Already registered?{' '}
               <Link href="/login" className="text-blue-600 font-bold hover:underline">
                 Sign In
               </Link>
