@@ -2,15 +2,15 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/lib/store';
+import ConnectElderModal from './ConnectElderModal';
+import DocumentViewerModal from './DocumentViewerModal';
 import { 
   Camera, 
   CheckCircle, 
   Lock, 
-  ShieldAlert, 
   Clock, 
-  Upload, 
   Check, 
-  Image as ImageIcon 
+  HeartHandshake
 } from 'lucide-react';
 
 export default function CaretakerPortal() {
@@ -25,10 +25,18 @@ export default function CaretakerPortal() {
   const [selectedDoseId, setSelectedDoseId] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string>('https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400');
   const [isUploading, setIsUploading] = useState(false);
+  const [showConnectModal, setShowConnectModal] = useState(false);
 
-  // Today's pending doses
-  const pendingDoses = doseLogs.filter(d => d.status === 'SCHEDULED');
-  const verifiedDoses = doseLogs.filter(d => d.status === 'SENSOR_VERIFIED' || d.status === 'DUAL_VERIFIED');
+  // In-app Document Viewer
+  const [viewingDoc, setViewingDoc] = useState<{
+    isOpen: boolean;
+    title: string;
+    imageUrl?: string | null;
+    extractedText?: string | null;
+  }>({
+    isOpen: false,
+    title: '',
+  });
 
   const handlePhotoVerification = async (doseId: string) => {
     setIsUploading(true);
@@ -43,43 +51,53 @@ export default function CaretakerPortal() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
       {/* Shift Status Banner */}
-      <div className="bg-purple-900 text-white rounded-3xl p-6 shadow-soft flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-[#0F141C] text-white rounded-3xl p-6 shadow-sm border border-slate-800 flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-purple-700 text-purple-200">
+            <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-purple-950 text-purple-300 border border-purple-800">
               Shift Active
             </span>
-            <span className="text-xs text-purple-300">· Time-bound PIN Verified</span>
+            <span className="text-xs text-slate-400">· Time-bound Shift Validated</span>
           </div>
           <h1 className="text-2xl font-black mt-1">
             Caretaker Duty: Ramesh Kumar
           </h1>
-          <p className="text-sm text-purple-200">
+          <p className="text-xs text-slate-400">
             Assisting {patient.name} · Shift valid until 18:00 IST today
           </p>
         </div>
 
-        <div className="bg-purple-800/80 border border-purple-700 rounded-2xl px-4 py-2.5 text-center">
-          <span className="text-[11px] text-purple-300 block font-medium">Shift Expiration</span>
-          <span className="font-mono font-bold text-white text-base">In 07h 45m</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowConnectModal(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition-all shadow-sm"
+          >
+            <HeartHandshake className="w-4 h-4" />
+            <span>Connect to Elder</span>
+          </button>
+
+          <div className="bg-[#141A23] border border-slate-800 rounded-2xl px-4 py-2 text-center">
+            <span className="text-[10px] text-slate-400 block font-medium">Shift Expiration</span>
+            <span className="font-mono font-bold text-white text-sm">In 07h 45m</span>
+          </div>
         </div>
       </div>
 
       {/* Security Scope Notice */}
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-800">
-        <Lock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+      <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex items-start gap-3 text-xs text-amber-900">
+        <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
         <div>
-          <span className="font-bold">Scoped Healthcare Role:</span> Caretakers have verified access strictly to today&apos;s medication intake tasks and live camera proof submission. Financial ledgers, family billing, and doctor clinical thresholds are locked for patient privacy.
+          <span className="font-bold">Scoped Role Policy:</span> Caretakers are restricted strictly to today&apos;s medication intake tasks and live camera proof submission. Financial ledgers and prescription limits are securely locked.
         </div>
       </div>
 
-      {/* Main Task List: Today's Medication Schedule */}
-      <div className="bg-white rounded-3xl p-6 shadow-soft border border-slate-100">
-        <h2 className="text-xl font-extrabold text-slate-900 tracking-tight mb-4">
+      {/* Main Task List */}
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80">
+        <h2 className="text-base font-extrabold text-slate-900 tracking-tight mb-4">
           Today&apos;s Medication Tasks & 2FA Verification
         </h2>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {medications.map(med => {
             const dose = doseLogs.find(d => d.medication_id === med.id);
             const isVerified = dose && (dose.status === 'SENSOR_VERIFIED' || dose.status === 'DUAL_VERIFIED');
@@ -88,21 +106,21 @@ export default function CaretakerPortal() {
             return (
               <div 
                 key={med.id}
-                className={`p-5 rounded-2xl border transition-all ${
+                className={`p-4 rounded-2xl border transition-all ${
                   isVerified
                     ? 'bg-slate-50 border-slate-200'
-                    : 'bg-white border-purple-200 shadow-sm'
+                    : 'bg-white border-slate-300 shadow-sm'
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${
-                      isVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700'
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${
+                      isVerified ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'
                     }`}>
                       {isVerified ? '✓' : '💊'}
                     </div>
                     <div>
-                      <div className="font-extrabold text-slate-900 text-base">
+                      <div className="font-bold text-slate-900 text-sm">
                         {med.name} {med.dosage}
                       </div>
                       <div className="text-xs text-slate-500 font-medium flex items-center gap-2 mt-0.5">
@@ -115,14 +133,14 @@ export default function CaretakerPortal() {
 
                   <div>
                     {isVerified ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold">
                         <CheckCircle className="w-4 h-4 text-emerald-600" />
                         {dose?.status === 'DUAL_VERIFIED' ? '2FA Dual Verified' : 'Sensor Verified'}
                       </span>
                     ) : (
                       <button
                         onClick={() => setSelectedDoseId(isSelected ? null : dose?.id || null)}
-                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all flex items-center gap-2 shadow-sm shadow-purple-500/20"
+                        className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
                       >
                         <Camera className="w-4 h-4" />
                         {isSelected ? 'Cancel Camera' : 'Submit Photo Proof'}
@@ -131,12 +149,11 @@ export default function CaretakerPortal() {
                   </div>
                 </div>
 
-                {/* 2FA Photo Submission Modal/Tray */}
+                {/* 2FA Photo Submission Modal */}
                 {isSelected && dose && (
-                  <div className="mt-4 pt-4 border-t border-purple-100 bg-purple-50/50 p-4 rounded-xl">
+                  <div className="mt-4 pt-4 border-t border-slate-200 bg-slate-50 p-4 rounded-xl">
                     <div className="flex flex-col sm:flex-row items-center gap-4">
-                      {/* Photo preview */}
-                      <div className="w-32 h-24 rounded-xl overflow-hidden border-2 border-purple-300 relative shadow-inner">
+                      <div className="w-32 h-24 rounded-xl overflow-hidden border border-slate-300 relative shadow-inner">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img 
                           src={photoUrl} 
@@ -160,7 +177,7 @@ export default function CaretakerPortal() {
                           <button
                             onClick={() => handlePhotoVerification(dose.id)}
                             disabled={isUploading}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
+                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5"
                           >
                             <Check className="w-4 h-4" />
                             {isUploading ? 'Verifying Proof...' : 'Approve & Submit 2FA'}
@@ -175,6 +192,21 @@ export default function CaretakerPortal() {
           })}
         </div>
       </div>
+
+      {/* Connect Modal */}
+      <ConnectElderModal
+        isOpen={showConnectModal}
+        onClose={() => setShowConnectModal(false)}
+      />
+
+      {/* Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={viewingDoc.isOpen}
+        onClose={() => setViewingDoc(prev => ({ ...prev, isOpen: false }))}
+        title={viewingDoc.title}
+        imageUrl={viewingDoc.imageUrl}
+        extractedText={viewingDoc.extractedText}
+      />
     </div>
   );
 }
